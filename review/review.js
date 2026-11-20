@@ -19,6 +19,7 @@ import {
 import { maskWord } from '../lib/answer.js';
 import { buildSlots, letterCount, sanitizeTyped, composeSlots } from '../lib/slots.js';
 import { letterDiff } from '../lib/diff.js';
+import { cleanWords } from '../lib/words.js';
 import { updateStreak, currentStreak, starsForScore, xpForCard, pickMessage } from '../lib/progress.js';
 import { confetti, playSound, setMuted, floatXp } from './effects.js';
 import { Recorder } from './recorder.js';
@@ -176,7 +177,7 @@ async function init() {
 
   let words;
   try {
-    words = (await listWords({ url: settings.sheetUrl, token: settings.token })).filter((w) => w.id && w.word);
+    words = cleanWords(await listWords({ url: settings.sheetUrl, token: settings.token }));
   } catch (err) {
     showMessage('Cannot open your word list', logError(err, 'sheet'), 'Try again', () => location.reload(), 'oops');
     return;

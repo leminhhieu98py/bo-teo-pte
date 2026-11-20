@@ -34,3 +34,15 @@ test('maskWord hides the word and its common suffixes', () => {
   assert.equal(maskWord('Nothing to hide.', 'apple'), 'Nothing to hide.');
   assert.equal(maskWord('', 'apple'), '');
 });
+
+test('answers ignore accents', () => {
+  assert.equal(isCorrect('cafe', 'café'), true);
+  assert.equal(isCorrect('naive', 'naïve'), true);
+  assert.equal(isCorrect('cafe', 'cafes'), false);
+});
+
+test('maskWord hides endings on every word of a phrase and curly apostrophes', () => {
+  assert.equal(maskWord('She looked up the word.', 'look up'), 'She ____ the word.');
+  assert.equal(maskWord('I don’t know.', "don't"), 'I ____ know.');
+  assert.equal(maskWord('A nice café here.', 'cafe'), 'A nice ____ here.');
+});
