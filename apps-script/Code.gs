@@ -6,6 +6,9 @@
  * (Execute as: Me, Who has access: Anyone). See README.md.
  */
 const TOKEN = 'CHANGE_ME';
+// Optional: the ID from the sheet URL (.../spreadsheets/d/<ID>/edit). Needed only when this
+// script was NOT opened from the sheet via Extensions > Apps Script.
+const SHEET_ID = '';
 const SHEET_NAME = 'Words';
 const HEADERS = [
   'id', 'word', 'ipa', 'part_of_speech', 'meaning_vi', 'description_vi', 'example_en', 'example_vi',
@@ -46,7 +49,8 @@ function withLock(fn) {
 }
 
 function getSheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SHEET_ID ? SpreadsheetApp.openById(SHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw new Error('No spreadsheet. Open Apps Script from the sheet or set SHEET_ID.');
   let sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
   if (sheet.getLastRow() === 0) {
