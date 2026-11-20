@@ -84,5 +84,6 @@ fi
 
 say "All set!"
 info "Save a word : highlight it on any page, then press Command+B."
+info "            : or press Command+B with nothing highlighted and drag around the explanation."
 info "Review      : click the Bo cố lên icon, then 'Start review'."
 info "You do not need to run this script every day. Run it again only to get updates."

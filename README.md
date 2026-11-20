@@ -5,6 +5,9 @@ A private Chrome extension for learning English words.
 - **Save:** highlight a word on any web page and press **Command+B**. Gemini writes the
   Vietnamese meaning, a short explanation, an example and the IPA, and the word is stored in a
   Google Sheet.
+- **Save from a picture:** press **Command+B** with nothing highlighted, then drag a box around
+  the word explanation (for example the popup of your learning site). Gemini reads the picture
+  and saves its meaning. If the picture is not clear, you get "Not enough information".
 - **Review:** every day, review the 30 newest words + 20 random older words (+ words you
   skipped yesterday). Read the Vietnamese meaning, type the English word, then say it out loud.
   Gemini grades the pronunciation with a strong focus on word stress. Pass with 70+ points and

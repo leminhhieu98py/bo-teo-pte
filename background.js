@@ -2,6 +2,7 @@
 import { validateSelection, extractSentence } from './lib/text.js';
 import { describeSaveResult, errorPayload } from './lib/save.js';
 import { errorEntry } from './lib/errors.js';
+import { MIN_AREA_PX } from './lib/capture.js';
 import { getReadySettings, getSettings, missingSettings, appendErrorLog } from './lib/storage.js';
 
 const MENU_ID = 'save-word';
@@ -32,6 +33,73 @@ function readSelectionInPage() {
   const block = node && node.closest ? node.closest('p, li, td, div, section, article, blockquote, h1, h2, h3, h4, span') : null;
   const context = (block && block.innerText) || (node && node.textContent) || '';
   return { text, context: context.slice(0, 2000) };
+}
+
+// Runs inside the page (top frame). Lets the learner drag a rectangle; resolves with the
+// rectangle in page pixels, or null when cancelled. Must be self-contained.
+function selectAreaInPage() {
+  return new Promise((resolve) => {
+    const ID = 'word-buddy-area-overlay';
+    document.getElementById(ID)?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = ID;
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;cursor:crosshair;background:rgba(45,34,80,.28);';
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;display:none;pointer-events:none;border:3px dashed #7C5CFF;border-radius:8px;box-shadow:0 0 0 9999px rgba(45,34,80,.35);';
+    const tip = document.createElement('div');
+    tip.textContent = 'Drag around the word explanation. Press Esc to cancel.';
+    tip.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);pointer-events:none;background:#7C5CFF;color:#fff;font:700 14px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;padding:10px 18px;border-radius:999px;box-shadow:0 8px 24px rgba(60,40,140,.3);';
+    overlay.append(box, tip);
+    document.documentElement.appendChild(overlay);
+
+    let start = null;
+    const area = (e) => ({
+      x: Math.min(start.x, e.clientX),
+      y: Math.min(start.y, e.clientY),
+      width: Math.abs(e.clientX - start.x),
+      height: Math.abs(e.clientY - start.y),
+    });
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        finish(null);
+      }
+    };
+    const timer = setTimeout(() => finish(null), 120000);
+    function finish(rect) {
+      clearTimeout(timer);
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      // Let the page repaint without the overlay before the screenshot is taken. The timeout
+      // covers pages where animation frames are paused.
+      let done = false;
+      const settle = () => {
+        if (!done) {
+          done = true;
+          resolve(rect);
+        }
+      };
+      requestAnimationFrame(() => requestAnimationFrame(settle));
+      setTimeout(settle, 150);
+    }
+    document.addEventListener('keydown', onKey, true);
+    overlay.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      start = { x: e.clientX, y: e.clientY };
+      overlay.style.background = 'transparent';
+      tip.style.display = 'none';
+      box.style.display = 'block';
+    });
+    overlay.addEventListener('mousemove', (e) => {
+      if (!start) return;
+      const r = area(e);
+      Object.assign(box.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.width}px`, height: `${r.height}px` });
+    });
+    overlay.addEventListener('mouseup', (e) => {
+      if (!start) return;
+      finish({ ...area(e), viewportWidth: window.innerWidth });
+    });
+  });
 }
 
 // Runs inside the page (top frame). Must be self-contained.
@@ -132,10 +200,45 @@ chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'save-result') showResult(message.tabId, message.result);
 });
 
+async function captureArea(tab) {
+  const tabId = tab.id;
+  let rect;
+  try {
+    const [first] = await chrome.scripting.executeScript({ target: { tabId }, func: selectAreaInPage });
+    rect = first?.result;
+  } catch {
+    return; // pages like chrome:// cannot be scripted
+  }
+  if (!rect) return; // cancelled with Esc
+  if (rect.width < MIN_AREA_PX || rect.height < MIN_AREA_PX) {
+    await showResult(tabId, { ok: false, error: { name: 'CaptureError', code: 'too_small', status: 0, message: 'Selected area is too small', model: '', where: 'save-image', word: '' } });
+    return;
+  }
+
+  let settings;
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 92 });
+    await toast(tabId, 'Reading the picture...', 'loading');
+    settings = await getReadySettings();
+    await ensureOffscreen();
+    await chrome.runtime.sendMessage({
+      target: 'offscreen',
+      type: 'save-image',
+      job: { tabId, dataUrl, rect, url: tab.url || '', settings },
+    });
+  } catch (err) {
+    await showResult(tabId, { ok: false, error: errorPayload(err, { where: 'save-image', model: settings?.model }) });
+  }
+}
+
 async function saveFromTab(tab, fallbackText) {
   const tabId = tab.id;
   const picked = await readSelection(tabId, fallbackText);
   const check = validateSelection(picked?.text);
+  if (!check.ok && check.reason === 'empty' && !fallbackText) {
+    await captureArea(tab); // nothing highlighted: let the learner pick the explanation area
+    return;
+  }
   if (!check.ok) {
     const msg = check.reason === 'empty'
       ? 'Highlight a word first, then press the shortcut.'

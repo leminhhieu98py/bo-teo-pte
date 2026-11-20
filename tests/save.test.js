@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { runSaveJob, describeSaveResult } from '../lib/save.js';
+import { runSaveJob, runImageJob, describeSaveResult } from '../lib/save.js';
 
 const settings = { apiKey: 'k', model: 'gemini-3.5-flash', sheetUrl: 'https://script.google.com/macros/s/x/exec', token: 't' };
 const enriched = { word: 'exclamation', ipa: '/x/', part_of_speech: 'noun', meaning_vi: 'tieng thot len', description_vi: 'd', example_en: 'e', example_vi: 'v' };
@@ -35,6 +35,31 @@ test('runSaveJob turns errors into a plain payload', async () => {
     ok: false,
     error: { name: 'GeminiError', code: 'quota', status: 429, message: 'quota', model: 'gemini-3.5-flash', where: 'save', word: 'a' },
   });
+});
+
+test('runImageJob reads the word card from the picture and saves it', async () => {
+  const fetchImpl = router({
+    gemini: () => [200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ ok: true, reason: '', ...enriched }) }] } }] }],
+    sheet: (b) => [200, { ok: true, status: 'added', word: b.word }],
+  });
+  const result = await runImageJob({ base64: 'QUJD', mimeType: 'image/jpeg', url: 'https://site/x', settings }, { fetchImpl });
+  assert.equal(result.ok, true);
+  assert.equal(result.word.word, 'exclamation');
+  assert.equal(fetchImpl.calls[1].body.word.source_url, 'https://site/x');
+});
+
+test('runImageJob reports pictures without enough information', async () => {
+  const fetchImpl = router({
+    gemini: () => [200, { candidates: [{ content: { parts: [{ text: '{"ok":false,"reason":"just a menu"}' }] } }] }],
+    sheet: () => [200, {}],
+  });
+  const result = await runImageJob({ base64: 'QUJD', mimeType: 'image/jpeg', url: '', settings }, { fetchImpl });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'not_enough_info');
+  assert.equal(result.error.where, 'save-image');
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.match(describeSaveResult(result).message, /Not enough information in the picture/);
+  assert.match(describeSaveResult({ ok: false, error: { code: 'too_small', message: 'x' } }).message, /too small/);
 });
 
 test('describeSaveResult adds a detail line for errors', () => {

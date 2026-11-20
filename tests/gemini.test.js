@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   filterFlashModels, pickDefaultModel, extractJson, buildEnrichBody, parseEnrich,
-  buildGradeBody, parseGrade, generate, listModels, GeminiError,
+  buildGradeBody, parseGrade, generate, listModels, GeminiError, buildImageBody, parseImageResult,
 } from '../lib/gemini.js';
 
 const GC = ['generateContent', 'countTokens'];
@@ -85,6 +85,30 @@ test('generate gives up after the timeout with code timeout', async () => {
     generate({ apiKey: 'k', model: 'm', body: {}, fetchImpl: hang, timeoutMs: 20 }),
     (e) => e instanceof GeminiError && e.code === 'timeout'
   );
+});
+
+test('buildImageBody sends the picture and asks for ok + word card fields', () => {
+  const body = buildImageBody('QUJD', 'image/jpeg');
+  const parts = body.contents[0].parts;
+  assert.deepEqual(parts.find((p) => p.inlineData).inlineData, { mimeType: 'image/jpeg', data: 'QUJD' });
+  assert.match(parts.find((p) => p.text).text, /not enough/i);
+  const required = body.generationConfig.responseSchema.required;
+  for (const field of ['ok', 'reason', 'word', 'meaning_vi']) assert.ok(required.includes(field), field);
+  assert.deepEqual(body.generationConfig.thinkingConfig, { thinkingBudget: 0 });
+});
+
+test('parseImageResult returns the word card when the picture is good', () => {
+  const card = parseImageResult({ ok: true, word: 'look up', meaning_vi: 'tra cứu', ipa: '/lʊk ʌp/' });
+  assert.equal(card.word, 'look up');
+  assert.equal(card.meaning_vi, 'tra cứu');
+  assert.equal(card.example_en, '');
+});
+
+test('parseImageResult rejects pictures without enough information', () => {
+  const isNotEnough = (e) => e instanceof GeminiError && e.code === 'not_enough_info';
+  assert.throws(() => parseImageResult({ ok: false, reason: 'The picture is a menu bar.' }), (e) => isNotEnough(e) && /menu bar/.test(e.message));
+  assert.throws(() => parseImageResult({ ok: true, word: '', meaning_vi: 'x' }), isNotEnough);
+  assert.throws(() => parseImageResult({ ok: 'true', word: 'a', meaning_vi: '' }), isNotEnough);
 });
 
 test('pickDefaultModel falls back to preview, then null', () => {
