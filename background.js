@@ -1,8 +1,7 @@
 // Service worker: saves the selected word when the shortcut or the context menu is used.
 import { validateSelection, extractSentence } from './lib/text.js';
-import { enrichWord, GeminiError } from './lib/gemini.js';
-import { addWord } from './lib/sheet.js';
-import { getReadySettings, getSettings, missingSettings, SetupError } from './lib/storage.js';
+import { describeSaveResult } from './lib/save.js';
+import { getReadySettings, getSettings, missingSettings } from './lib/storage.js';
 
 const MENU_ID = 'save-word';
 
@@ -95,12 +94,40 @@ async function readSelection(tabId, fallbackText) {
   return fallbackText ? { text: fallbackText, context: '' } : null;
 }
 
-function errorMessage(err) {
-  if (err instanceof SetupError) return `Bo cố lên needs setup. ${err.message}`;
-  if (err instanceof GeminiError && err.code === 'quota') return 'Gemini is busy (quota). Try again in a minute.';
-  if (err instanceof GeminiError && err.code === 'auth') return 'Gemini API key is not valid. Check Settings.';
-  return `Could not save: ${err.message}`;
+const OFFSCREEN_URL = 'offscreen/offscreen.html';
+
+// Slow Gemini answers (> 30s) would get this service worker terminated, so the network work
+// runs in an offscreen document that reports back with a 'save-result' message.
+async function ensureOffscreen() {
+  if (chrome.runtime.getContexts) {
+    const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+    if (contexts.length) return;
+  }
+  try {
+    await chrome.offscreen.createDocument({
+      url: OFFSCREEN_URL,
+      reasons: ['DOM_PARSER'],
+      justification: 'Run slow Gemini and Google Sheets requests outside the service worker.',
+    });
+  } catch (err) {
+    if (!/single offscreen/i.test(err.message)) throw err;
+  }
 }
+
+function errorPayload(err) {
+  return { ok: false, error: { name: err?.name || 'Error', code: err?.code || '', message: err?.message || String(err) } };
+}
+
+async function showResult(tabId, result) {
+  const { message, kind } = describeSaveResult(result);
+  await toast(tabId, message, kind);
+  if (result.error?.name === 'SetupError') chrome.runtime.openOptionsPage();
+}
+
+chrome.runtime.onMessage.addListener((message) => {
+  // 'keepalive' messages need no handling: receiving them keeps this worker alive.
+  if (message?.type === 'save-result') showResult(message.tabId, message.result);
+});
 
 async function saveFromTab(tab, fallbackText) {
   const tabId = tab.id;
@@ -119,19 +146,13 @@ async function saveFromTab(tab, fallbackText) {
   try {
     const settings = await getReadySettings();
     const context = extractSentence(picked.context, word);
-    const enriched = await enrichWord({ apiKey: settings.apiKey, model: settings.model, word, context });
-    const { status, word: saved } = await addWord({
-      url: settings.sheetUrl,
-      token: settings.token,
-      word: { ...enriched, source_url: tab.url || '' },
+    await ensureOffscreen();
+    await chrome.runtime.sendMessage({
+      target: 'offscreen',
+      type: 'save-word',
+      job: { tabId, word, context, url: tab.url || '', settings },
     });
-    if (status === 'exists') {
-      await toast(tabId, `"${saved.word}" is already in your list: ${saved.meaning_vi}`, 'info');
-    } else {
-      await toast(tabId, `Saved "${saved.word}" - ${saved.meaning_vi}`, 'success');
-    }
   } catch (err) {
-    await toast(tabId, errorMessage(err), 'error');
-    if (err instanceof SetupError) chrome.runtime.openOptionsPage();
+    await showResult(tabId, errorPayload(err));
   }
 }

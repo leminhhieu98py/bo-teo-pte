@@ -36,6 +36,44 @@ test('pickDefaultModel prefers the newest stable flash model', () => {
   assert.equal(pickDefaultModel([...MODELS, { name: 'models/gemini-3-flash', supportedGenerationMethods: GC }]), 'gemini-3-flash');
 });
 
+test('pickDefaultModel prefers gemini-3.5-flash when available', () => {
+  const withNewer = [...MODELS,
+    { name: 'models/gemini-3.5-flash', supportedGenerationMethods: GC },
+    { name: 'models/gemini-3.8-flash', supportedGenerationMethods: GC }];
+  assert.equal(pickDefaultModel(withNewer), 'gemini-3.5-flash');
+});
+
+test('request bodies turn thinking off', () => {
+  assert.deepEqual(buildEnrichBody('a', '').generationConfig.thinkingConfig, { thinkingBudget: 0 });
+  assert.deepEqual(buildGradeBody('a', '', 'QQ==').generationConfig.thinkingConfig, { thinkingBudget: 0 });
+});
+
+test('generate retries without thinkingConfig when the model rejects it', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push(JSON.parse(init.body));
+    if (calls.length === 1) {
+      return { ok: false, status: 400, json: async () => ({ error: { message: 'Thinking budget is not supported for this model.' } }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"ok":1}' }] } }] }) };
+  };
+  const body = { generationConfig: { temperature: 0.2, thinkingConfig: { thinkingBudget: 0 } } };
+  assert.deepEqual(await generate({ apiKey: 'k', model: 'm', body, fetchImpl }), { ok: 1 });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].generationConfig.thinkingConfig, undefined);
+  assert.equal(calls[1].generationConfig.temperature, 0.2);
+});
+
+test('generate gives up after the timeout with code timeout', async () => {
+  const hang = (url, init) => new Promise((_, reject) => {
+    init.signal.addEventListener('abort', () => reject(init.signal.reason));
+  });
+  await assert.rejects(
+    generate({ apiKey: 'k', model: 'm', body: {}, fetchImpl: hang, timeoutMs: 20 }),
+    (e) => e instanceof GeminiError && e.code === 'timeout'
+  );
+});
+
 test('pickDefaultModel falls back to preview, then null', () => {
   assert.equal(pickDefaultModel([MODELS[3]]), 'gemini-3-flash-preview');
   assert.equal(pickDefaultModel([MODELS[4]]), null);

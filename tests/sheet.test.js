@@ -37,6 +37,14 @@ test('postReview sends results', async () => {
   assert.deepEqual(fetchImpl.calls[0].payload.results, [{ id: '1', needsReview: false }]);
 });
 
+test('a request that never answers times out as SheetError', async () => {
+  const hang = (u, init) => new Promise((_, reject) => {
+    init.signal.addEventListener('abort', () => reject(init.signal.reason));
+  });
+  await assert.rejects(listWords({ url, token: 't', fetchImpl: hang, timeoutMs: 20 }),
+    (e) => e instanceof SheetError && /did not answer/.test(e.message));
+});
+
 test('errors from the script or HTTP become SheetError', async () => {
   await assert.rejects(listWords({ url, token: 'bad', fetchImpl: fakeFetch({ ok: false, error: 'bad token' }) }),
     (e) => e instanceof SheetError && e.message === 'bad token');
