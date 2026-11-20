@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { roundSummary, isBetterRound, mergeDay, monthGrid, dayLevel, monthTotals } from '../lib/history.js';
+import { roundSummary, isBetterRound, mergeDay, monthGrid, dayLevel, monthTotals, streakFromHistory } from '../lib/history.js';
 
 const words = new Map([['a', { word: 'apple' }], ['b', { word: 'look up' }], ['c', { word: 'banana' }]]);
 
@@ -74,4 +74,13 @@ test('monthTotals sums the best results of the month', () => {
     { date: '2026-10-31', best_xp: 99, best_passed: 9 },
   ];
   assert.deepEqual(monthTotals(rows, 2026, 10), { days: 2, xp: 100, passed: 8 });
+});
+
+test('streakFromHistory counts consecutive studied days ending today or yesterday', () => {
+  const rows = [{ date: '2026-11-18', rounds: 1 }, { date: '2026-11-19', rounds: '2' }, { date: '2026-11-20', rounds: 1 }, { date: '2026-11-15', rounds: 1 }];
+  assert.deepEqual(streakFromHistory(rows, '2026-11-20'), { count: 3, lastDate: '2026-11-20' });
+  assert.deepEqual(streakFromHistory(rows, '2026-11-21'), { count: 3, lastDate: '2026-11-20' });
+  assert.deepEqual(streakFromHistory(rows, '2026-11-22'), { count: 0, lastDate: '2026-11-20' });
+  assert.deepEqual(streakFromHistory([], '2026-11-20'), { count: 0, lastDate: '' });
+  assert.deepEqual(streakFromHistory([{ date: '2026-10-31', rounds: 1 }, { date: '2026-11-01', rounds: 1 }], '2026-11-01'), { count: 2, lastDate: '2026-11-01' });
 });

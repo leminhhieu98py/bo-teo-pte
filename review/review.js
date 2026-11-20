@@ -5,8 +5,8 @@ import {
   getSettings, getReadySettings, missingSettings, SetupError, getSession, saveSession,
   getStreak, saveStreak, getPrefs, savePrefs, appendErrorLog, outbox, migrateLegacyQueues,
 } from '../lib/storage.js';
-import { listWords, postReview, saveHistory } from '../lib/sheet.js';
-import { roundSummary, isBetterRound } from '../lib/history.js';
+import { listWords, postReview, saveHistory, listHistory } from '../lib/sheet.js';
+import { roundSummary, isBetterRound, streakFromHistory } from '../lib/history.js';
 import { errorEntry, formatDetail } from '../lib/errors.js';
 import { gradePronunciation, GeminiError } from '../lib/gemini.js';
 import { todayKey, toBool } from '../lib/daily.js';
@@ -145,6 +145,20 @@ async function sendItem(item) {
   }
 }
 
+// The streak comes from the Sheet History (plus rounds still waiting in the outbox), so it
+// matches what the History page shows. The local copy is only a cache for the popup.
+async function syncStreak() {
+  try {
+    const rows = await listHistory({ url: app.settings.sheetUrl, token: app.settings.token });
+    const pending = (await outbox.all()).filter((i) => i.kind === 'history').map((i) => ({ date: i.payload.date, rounds: 1 }));
+    app.streak = streakFromHistory([...rows, ...pending], todayKey());
+    await saveStreak(app.streak);
+    updateTopbar();
+  } catch {
+    // Offline or old Code.gs: keep the cached streak.
+  }
+}
+
 async function flushQueue() {
   await migrateLegacyQueues();
   await outbox.flush(sendItem);
@@ -193,7 +207,7 @@ async function init() {
   }
   app.settings = settings;
   app.streak = await getStreak();
-  flushQueue();
+  flushQueue().then(syncStreak);
 
   let words;
   try {
