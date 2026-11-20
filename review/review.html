@@ -126,7 +126,7 @@
       <!-- Summary -->
       <div class="screen card center" id="screenSummary" hidden>
         <h1 class="big-title" id="summaryTitle">You did it!</h1>
-        <p class="soft">See you tomorrow for more words.</p>
+        <p class="soft" id="roundInfo">See you tomorrow for more words.</p>
         <div class="tiles">
           <div class="tile"><b id="sumCards">0</b><span>cards</span></div>
           <div class="tile"><b id="sumPassed">0</b><span>passed</span></div>
@@ -138,7 +138,11 @@
           <h3>Coming back tomorrow</h3>
           <div class="chips" id="againList"></div>
         </div>
-        <button class="btn btn-primary" id="closeBtn">Close</button>
+        <div class="summary-actions">
+          <button class="btn btn-primary" id="againBtn">Review again</button>
+          <button class="btn btn-ghost" id="historyBtn">History</button>
+          <button class="btn btn-ghost" id="closeBtn">Close</button>
+        </div>
       </div>
     </section>
   </main>

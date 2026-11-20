@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { listWords, addWord, postReview, SheetError } from '../lib/sheet.js';
+import { listWords, addWord, postReview, saveHistory, listHistory, SheetError } from '../lib/sheet.js';
 
 function fakeFetch(body, status = 200) {
   const calls = [];
@@ -35,6 +35,19 @@ test('postReview sends results', async () => {
   const fetchImpl = fakeFetch({ ok: true, updated: 1 });
   await postReview({ url, token: 't', results: [{ id: '1', needsReview: false }], fetchImpl });
   assert.deepEqual(fetchImpl.calls[0].payload.results, [{ id: '1', needsReview: false }]);
+});
+
+test('saveHistory sends the day and the round', async () => {
+  const fetchImpl = fakeFetch({ ok: true, day: { date: '2026-11-20', rounds: 1 } });
+  const round = { xp: 10, passed: 1, total: 2, avgScore: 80, again: [] };
+  assert.deepEqual(await saveHistory({ url, token: 't', date: '2026-11-20', round, fetchImpl }), { date: '2026-11-20', rounds: 1 });
+  assert.deepEqual(fetchImpl.calls[0].payload, { token: 't', action: 'history-save', date: '2026-11-20', round });
+});
+
+test('listHistory returns the days', async () => {
+  const fetchImpl = fakeFetch({ ok: true, days: [{ date: '2026-11-20' }] });
+  assert.deepEqual(await listHistory({ url, token: 't', fetchImpl }), [{ date: '2026-11-20' }]);
+  assert.equal(fetchImpl.calls[0].payload.action, 'history-list');
 });
 
 test('a request that never answers times out as SheetError', async () => {

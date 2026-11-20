@@ -4,11 +4,13 @@ import { ICONS, starSvg } from '../ui/icons.js';
 import {
   getSettings, getReadySettings, missingSettings, SetupError, getSession, saveSession,
   getStreak, saveStreak, getPrefs, savePrefs, enqueueReviews, takeQueuedReviews, appendErrorLog,
+  enqueueHistory, takeQueuedHistory,
 } from '../lib/storage.js';
-import { listWords, postReview } from '../lib/sheet.js';
+import { listWords, postReview, saveHistory } from '../lib/sheet.js';
+import { roundSummary, isBetterRound } from '../lib/history.js';
 import { errorEntry, formatDetail } from '../lib/errors.js';
 import { gradePronunciation, GeminiError } from '../lib/gemini.js';
-import { buildDailySet, todayKey, toBool } from '../lib/daily.js';
+import { buildDailySet, todayKey, toBool, shuffle } from '../lib/daily.js';
 import {
   createCardState, applyTyping, shouldAutoHint, applyGrade, canSkip, skipCard, needsReview,
   applyHint, revealAll,
@@ -139,6 +141,7 @@ async function sendResults(results) {
 async function flushQueue() {
   const queued = await takeQueuedReviews();
   if (queued.length) await sendResults(queued);
+  for (const item of await takeQueuedHistory()) await sendHistory(item);
 }
 
 // ---------- start ----------
@@ -186,7 +189,9 @@ async function init() {
 
   const today = todayKey();
   let session = await getSession();
-  const fresh = !session || session.date !== today || Object.keys(session.results || {}).length === 0;
+  // Rebuild the set on a new day, or when round 1 has not started yet (new words may exist).
+  const fresh = !session || session.date !== today
+    || (Object.keys(session.results || {}).length === 0 && (session.round || 1) <= 1);
   if (fresh) session = { date: today, ids: buildDailySet(words), results: {}, xp: 0, combo: 0 };
   session.ids = session.ids.filter((id) => app.words.has(id));
   session.index = firstUnfinished(session);
@@ -546,25 +551,61 @@ async function finishCard() {
 async function completeDay() {
   app.streak = updateStreak(await getStreak(), todayKey());
   await saveStreak(app.streak);
+  const s = app.session;
+  const round = roundSummary(s, app.words);
+  const newBest = isBetterRound(round, s.best);
+  if (newBest) s.best = round;
+  await saveSession(s);
+  sendHistory({ date: s.date, round });
   updateTopbar();
-  showSummary(true);
+  showSummary(true, newBest);
 }
 
-function showSummary(celebrate) {
-  const s = app.session;
-  const results = Object.entries(s.results);
-  const passed = results.filter(([, r]) => r.passed).length;
-  const scores = results.map(([, r]) => r.score).filter((n) => n > 0);
-  const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+// Saves the finished round to the Sheet "History" tab (best round per day is kept there).
+async function sendHistory(item) {
+  try {
+    await saveHistory({ url: app.settings.sheetUrl, token: app.settings.token, ...item });
+  } catch (err) {
+    logError(err, 'history');
+    await enqueueHistory(item);
+  }
+}
 
-  $('summaryTitle').textContent = pickMessage('done');
-  $('sumCards').textContent = results.length;
-  $('sumPassed').textContent = passed;
-  $('sumScore').textContent = avg;
-  $('sumXp').textContent = s.xp || 0;
+async function reviewAgain() {
+  const prev = app.session;
+  if (prev.date !== todayKey()) {
+    location.reload(); // a new day started: build a fresh set
+    return;
+  }
+  app.session = {
+    date: prev.date,
+    ids: shuffle(prev.ids),
+    results: {},
+    xp: 0,
+    combo: 0,
+    index: 0,
+    round: (prev.round || 1) + 1,
+    best: prev.best,
+  };
+  await saveSession(app.session);
+  updateTopbar();
+  showCard();
+  say(`Round ${app.session.round}! Can you beat ${prev.best?.xp ?? 0} XP?`, 'happy');
+}
+
+function showSummary(celebrate, newBest = false) {
+  const s = app.session;
+  const round = roundSummary(s, app.words);
+
+  $('summaryTitle').textContent = newBest && (s.round || 1) > 1 ? 'New best today!' : pickMessage('done');
+  $('roundInfo').textContent = `Round ${s.round || 1} · Best today: ${s.best?.xp ?? round.xp} XP · Want to beat it?`;
+  $('sumCards').textContent = round.total;
+  $('sumPassed').textContent = round.passed;
+  $('sumScore').textContent = round.avgScore;
+  $('sumXp').textContent = round.xp;
   $('sumStreak').textContent = currentStreak(app.streak, todayKey());
 
-  const again = results.filter(([, r]) => r.skipped || r.revealed).map(([id]) => app.words.get(id)?.word).filter(Boolean);
+  const again = round.again;
   $('againBox').hidden = again.length === 0;
   $('againList').replaceChildren(...again.map((w) => {
     const span = document.createElement('span');
@@ -596,6 +637,8 @@ $('retryBtn').addEventListener('click', retry);
 $('skipBtn').addEventListener('click', () => { app.card = skipCard(app.card); finishCard(); });
 $('nextBtn').addEventListener('click', finishCard);
 $('closeBtn').addEventListener('click', closeTab);
+$('againBtn').addEventListener('click', reviewAgain);
+$('historyBtn').addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('history/history.html') }));
 $('muteBtn').addEventListener('click', async () => {
   app.muted = !app.muted;
   renderMute();

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bo cố lên History</title>
+  <link rel="icon" href="../icons/icon32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../ui/theme.css">
+  <link rel="stylesheet" href="history.css">
+</head>
+<body>
+  <main>
+    <div class="head">
+      <div class="mascot" id="mascot"></div>
+      <div>
+        <h1>My learning history</h1>
+        <p id="subtitle">Every day you study turns a box colorful.</p>
+      </div>
+    </div>
+
+    <div class="tiles">
+      <div class="tile"><b id="totDays">0</b><span>days studied</span></div>
+      <div class="tile"><b id="totPassed">0</b><span>words passed</span></div>
+      <div class="tile"><b id="totXp">0</b><span>best XP</span></div>
+    </div>
+
+    <section class="card">
+      <div class="month-nav">
+        <button class="btn btn-ghost btn-round" id="prevMonth" aria-label="Previous month">&#8249;</button>
+        <h2 id="monthTitle"></h2>
+        <button class="btn btn-ghost btn-round" id="nextMonth" aria-label="Next month">&#8250;</button>
+      </div>
+      <div class="weekdays"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+      <div class="grid" id="grid"></div>
+      <div class="legend">
+        <span>Less</span><i class="lv0"></i><i class="lv1"></i><i class="lv2"></i><i class="lv3"></i><i class="lv4"></i><span>More words passed</span>
+      </div>
+      <p class="status err" id="status"></p>
+    </section>
+
+    <section class="card detail" id="detail"></section>
+  </main>
+  <script type="module" src="history.js"></script>
+</body>
+</html>

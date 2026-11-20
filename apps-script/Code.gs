@@ -24,6 +24,8 @@ function doPost(e) {
     if (body.action === 'list') return reply({ ok: true, words: readWords() });
     if (body.action === 'add') return reply(withLock(() => addWord(body.word || {})));
     if (body.action === 'review') return reply(withLock(() => applyReviews(body.results || [])));
+    if (body.action === 'history-save') return reply(withLock(() => saveHistory(String(body.date || ''), body.round || {})));
+    if (body.action === 'history-list') return reply({ ok: true, days: readHistory() });
     return reply({ ok: false, error: 'Unknown action' });
   } catch (err) {
     return reply({ ok: false, error: String(err && err.message ? err.message : err) });
@@ -131,4 +133,86 @@ function applyReviews(results) {
     updated++;
   });
   return { ok: true, updated: updated };
+}
+
+// ---------- Daily history: one row per day with the best round (mirrors lib/history.js) ----------
+
+const HISTORY_SHEET = 'History';
+const HISTORY_HEADERS = ['date', 'rounds', 'best_xp', 'best_passed', 'total', 'best_avg_score', 'again_words', 'updated_at'];
+
+function getHistorySheet() {
+  const ss = SHEET_ID ? SpreadsheetApp.openById(SHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(HISTORY_SHEET);
+  if (!sheet) sheet = ss.insertSheet(HISTORY_SHEET);
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(HISTORY_HEADERS);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, HISTORY_HEADERS.length).setFontWeight('bold');
+  }
+  return sheet;
+}
+
+function dateText(value) {
+  if (value instanceof Date) return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return String(value);
+}
+
+function historyRowToObject(row) {
+  const day = {};
+  HISTORY_HEADERS.forEach((h, i) => { day[h] = row[i] instanceof Date ? dateText(row[i]) : row[i]; });
+  day.date = dateText(row[0]);
+  return day;
+}
+
+function readHistory() {
+  const sheet = getHistorySheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  return sheet.getRange(2, 1, lastRow - 1, HISTORY_HEADERS.length).getValues()
+    .filter((r) => r[0])
+    .map(historyRowToObject);
+}
+
+function isBetterRound(a, b) {
+  const n = (v) => Number(v) || 0;
+  if (n(a.xp) !== n(b.xp)) return n(a.xp) > n(b.xp);
+  if (n(a.passed) !== n(b.passed)) return n(a.passed) > n(b.passed);
+  return n(a.avgScore) > n(b.avgScore);
+}
+
+function saveHistory(date, round) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: 'Bad date' };
+  const n = (v) => Number(v) || 0;
+  const sheet = getHistorySheet();
+  const days = readHistory();
+  const index = days.findIndex((d) => d.date === date);
+  const now = new Date().toISOString();
+  const best = {
+    best_xp: n(round.xp),
+    best_passed: n(round.passed),
+    total: n(round.total),
+    best_avg_score: n(round.avgScore),
+    again_words: (round.again || []).join(', '),
+  };
+
+  let day;
+  if (index === -1) {
+    day = Object.assign({ date: date, rounds: 1 }, best, { updated_at: now });
+  } else {
+    const old = days[index];
+    const keep = isBetterRound(round, { xp: old.best_xp, passed: old.best_passed, avgScore: old.best_avg_score });
+    day = Object.assign({ date: date, rounds: n(old.rounds) + 1 }, keep ? best : {
+      best_xp: n(old.best_xp),
+      best_passed: n(old.best_passed),
+      total: n(old.total),
+      best_avg_score: n(old.best_avg_score),
+      again_words: String(old.again_words || ''),
+    }, { updated_at: now });
+  }
+
+  const row = HISTORY_HEADERS.map((h) => day[h]);
+  const rowNumber = index === -1 ? sheet.getLastRow() + 1 : index + 2;
+  sheet.getRange(rowNumber, 1).setNumberFormat('@'); // keep the date as text
+  sheet.getRange(rowNumber, 1, 1, HISTORY_HEADERS.length).setValues([row]);
+  return { ok: true, day: day };
 }

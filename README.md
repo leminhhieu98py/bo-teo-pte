@@ -13,6 +13,10 @@ A private Chrome extension for learning English words.
   Gemini grades the pronunciation with a strong focus on word stress. Pass with 70+ points and
   correct stress. After 3 failed tries you may skip; the word comes back tomorrow.
 
+- **Review again + History:** after finishing, press "Review again" to try to beat your best
+  score of the day. The History page (popup > History) shows a month calendar of your best
+  result each day. History is saved in the Google Sheet tab `History`.
+
 Mochi the cat cheers you on with confetti, stars, combos, XP and a daily streak.
 
 ## For the learner: install (one time)
@@ -58,6 +62,12 @@ The sheet tab `Words` and its header row are created automatically on first use.
 
 After editing `Code.gs` later, use **Deploy > Manage deployments > Edit > New version** so the
 URL stays the same.
+
+### Updating Code.gs later
+
+When `apps-script/Code.gs` changes (for example the History tab was added), paste the new file
+into Apps Script, keep your own `TOKEN` (and `SHEET_ID`) values, save, then
+**Deploy > Manage deployments > Edit (pencil) > Version: New version > Deploy**. The URL stays the same.
 
 ### 2. Gemini API key
 

@@ -45,3 +45,8 @@ $('settings').addEventListener('click', () => {
 });
 
 render();
+
+$('history').addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('history/history.html') });
+  window.close();
+});
