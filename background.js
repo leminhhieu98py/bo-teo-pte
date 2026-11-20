@@ -7,6 +7,8 @@ import { getReadySettings, getSettings, missingSettings, SetupError } from './li
 const MENU_ID = 'save-word';
 
 chrome.runtime.onInstalled.addListener(async () => {
+  // onInstalled also fires on reload/update; remove first to avoid a duplicate-id error.
+  await chrome.contextMenus.removeAll();
   chrome.contextMenus.create({ id: MENU_ID, title: 'Save "%s" to Word Buddy', contexts: ['selection'] });
   const settings = await getSettings();
   if (missingSettings(settings).length) chrome.runtime.openOptionsPage();
