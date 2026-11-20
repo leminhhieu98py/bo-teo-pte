@@ -201,7 +201,7 @@ async function init() {
   const settings = await getSettings();
   const missing = missingSettings(settings);
   if (missing.length) {
-    showMessage('Mochi needs a quick setup', `Missing: ${missing.join(', ')}. Ask your brother to run start.sh, or open Settings.`,
+    showMessage('Mochi needs a quick setup', `Missing: ${missing.join(', ')}. Open Settings and fill them in (ask your brother for the values).`,
       'Open Settings', () => chrome.runtime.openOptionsPage(), 'oops');
     return;
   }
