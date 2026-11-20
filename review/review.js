@@ -18,6 +18,7 @@ import {
 } from '../lib/card.js';
 import { maskWord } from '../lib/answer.js';
 import { buildSlots, letterCount, sanitizeTyped, composeSlots } from '../lib/slots.js';
+import { letterDiff } from '../lib/diff.js';
 import { updateStreak, currentStreak, starsForScore, xpForCard, pickMessage } from '../lib/progress.js';
 import { confetti, playSound, setMuted, floatXp } from './effects.js';
 import { Recorder } from './recorder.js';
@@ -222,6 +223,9 @@ function showCard() {
   $('answerInput').value = '';
   $('answerInput').disabled = false;
   $('typingPart').hidden = false;
+  $('answerForm').hidden = false;
+  $('attempts').hidden = true;
+  $('continueBtn').hidden = true;
   $('speakingPart').hidden = true;
   $('combo').hidden = (s.combo || 0) < 3;
   toastLine('');
@@ -271,9 +275,61 @@ function finishRevealed() {
   app.card = applyTyping(app.card, answer, app.word.word).state;
   $('answerInput').disabled = true;
   renderSlots('reveal');
+  renderAttempts(app.card.attempts || []);
+  $('answerForm').hidden = true;
+  $('continueBtn').hidden = false;
+  $('continueBtn').focus();
   say(pickMessage('reveal'), 'think');
-  toastLine('This word will come back tomorrow. Now let us say it!', 'info');
-  setTimeout(goSpeaking, 2000);
+  toastLine('This word will come back tomorrow.', 'info');
+}
+
+function letterEl(className, text, below) {
+  const span = document.createElement('span');
+  span.className = `letter ${className}`;
+  span.textContent = text || '';
+  if (below) {
+    const small = document.createElement('small');
+    small.textContent = below;
+    span.append(small);
+  }
+  return span;
+}
+
+// Shows each wrong answer under the right word: green = right letter, red = wrong letter (with the
+// right one below), struck = extra letter, dashed box = missing letter.
+function renderAttempts(attempts) {
+  if (!attempts.length) {
+    $('attempts').hidden = true;
+    return;
+  }
+  const row = (label, letters) => {
+    const div = document.createElement('div');
+    div.className = 'attempt-row';
+    const name = document.createElement('span');
+    name.className = 'label';
+    name.textContent = label;
+    const box = document.createElement('span');
+    box.className = 'letters';
+    box.append(...letters);
+    div.append(name, box);
+    return div;
+  };
+  const correct = [...app.word.word.toLowerCase()].map((ch) => letterEl(ch === ' ' ? 'space' : 'right', ch));
+  const tries = attempts.map((attempt, n) => row(`Try ${n + 1}`, letterDiff(attempt, app.word.word).map((op) => {
+    if (op.type === 'match') return letterEl(op.ch === ' ' ? 'space' : 'ok', op.ch);
+    if (op.type === 'wrong') return letterEl('bad', op.ch, op.expected);
+    if (op.type === 'extra') return letterEl('extra', op.ch);
+    return letterEl('missing', '', op.expected);
+  })));
+  $('attempts').replaceChildren(row('Correct', correct), ...tries);
+  $('attempts').hidden = false;
+}
+
+function continueAfterReveal() {
+  $('continueBtn').hidden = true;
+  $('attempts').hidden = true;
+  $('answerForm').hidden = false;
+  goSpeaking();
 }
 
 function giveHint(auto = false) {
@@ -627,6 +683,7 @@ $('skipBtn').addEventListener('click', () => { app.card = skipCard(app.card); fi
 $('nextBtn').addEventListener('click', finishCard);
 $('closeBtn').addEventListener('click', closeTab);
 $('againBtn').addEventListener('click', reviewAgain);
+$('continueBtn').addEventListener('click', continueAfterReveal);
 $('historyBtn').addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('history/history.html') }));
 $('muteBtn').addEventListener('click', async () => {
   app.muted = !app.muted;

@@ -42,6 +42,15 @@ test('third wrong typing reveals the word, then the learner must type it', () =>
   assert.equal(needsReview(ok.state), true);
 });
 
+test('wrong answers are remembered in order, correct ones are not', () => {
+  let s = createCardState();
+  assert.deepEqual(s.attempts, []);
+  s = applyTyping(s, 'ocasion', 'occasion').state;
+  s = applyTyping(s, 'okkasion', 'occasion').state;
+  s = applyTyping(s, 'occasion', 'occasion').state;
+  assert.deepEqual(s.attempts, ['ocasion', 'okkasion']);
+});
+
 test('does not mutate the previous state', () => {
   const s = createCardState();
   applyTyping(s, 'x', 'hello');
