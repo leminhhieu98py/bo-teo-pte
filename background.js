@@ -9,7 +9,7 @@ const MENU_ID = 'save-word';
 chrome.runtime.onInstalled.addListener(async () => {
   // onInstalled also fires on reload/update; remove first to avoid a duplicate-id error.
   await chrome.contextMenus.removeAll();
-  chrome.contextMenus.create({ id: MENU_ID, title: 'Save "%s" to Word Buddy', contexts: ['selection'] });
+  chrome.contextMenus.create({ id: MENU_ID, title: 'Save "%s" to Bo cố lên', contexts: ['selection'] });
   const settings = await getSettings();
   if (missingSettings(settings).length) chrome.runtime.openOptionsPage();
 });
@@ -96,7 +96,7 @@ async function readSelection(tabId, fallbackText) {
 }
 
 function errorMessage(err) {
-  if (err instanceof SetupError) return `Word Buddy needs setup. ${err.message}`;
+  if (err instanceof SetupError) return `Bo cố lên needs setup. ${err.message}`;
   if (err instanceof GeminiError && err.code === 'quota') return 'Gemini is busy (quota). Try again in a minute.';
   if (err instanceof GeminiError && err.code === 'auth') return 'Gemini API key is not valid. Check Settings.';
   return `Could not save: ${err.message}`;

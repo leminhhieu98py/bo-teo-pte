@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Word Buddy",
+  "name": "Bo cố lên",
   "version": "1.0.0",
   "description": "Save English words with one shortcut and review them every day with Mochi.",
   "icons": {
@@ -10,7 +10,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Word Buddy",
+    "default_title": "Bo cố lên",
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
@@ -30,7 +30,7 @@
         "default": "Ctrl+Shift+S",
         "mac": "MacCtrl+Shift+S"
       },
-      "description": "Save the selected word to Word Buddy"
+      "description": "Save the selected word to Bo cố lên"
     }
   }
 }

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Word Buddy - one command to set up or update the extension on macOS.
+# Bo cố lên - one command to set up or update the extension on macOS.
 # Usage: ./start.sh
 set -euo pipefail
 
@@ -14,7 +14,7 @@ wait_enter() { read -r -p "  Press Enter to continue... " _; }
 
 json_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 
-say "Hi! Let's get Word Buddy ready."
+say "Hi! Let's get Bo cố lên ready."
 
 # 1. Get the newest code.
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git remote get-url origin >/dev/null 2>&1; then
@@ -60,14 +60,14 @@ if [ ! -d "/Applications/Google Chrome.app" ] && [ ! -d "$HOME/Applications/Goog
 fi
 
 say "3. Chrome"
-read -r -p "  Is Word Buddy already added to Chrome? [y/N] " ALREADY
+read -r -p "  Is Bo cố lên already added to Chrome? [y/N] " ALREADY
 printf 'chrome://extensions' | pbcopy
 open -a "Google Chrome" "chrome://extensions" >/dev/null 2>&1 || true
 
 if [[ "$ALREADY" =~ ^[Yy] ]]; then
   info "Chrome is opening the Extensions page."
   info "If it does not open: click the address bar, press Cmd+V (already copied), then Enter."
-  info "Find Word Buddy and click its round reload arrow. Done!"
+  info "Find Bo cố lên and click its round reload arrow. Done!"
 else
   info "Chrome is opening the Extensions page."
   info "If it does not open: click the address bar, press Cmd+V (already copied), then Enter."
@@ -77,12 +77,12 @@ else
   info "  a) Turn ON 'Developer mode' (top right corner)."
   info "  b) Click 'Load unpacked'."
   info "  c) Press Cmd+Shift+G, then Cmd+V (the folder path is copied), then Enter."
-  info "  d) Click 'Select'. Word Buddy appears in the list."
-  info "  e) Click the puzzle icon next to the address bar and pin Word Buddy."
+  info "  d) Click 'Select'. Bo cố lên appears in the list."
+  info "  e) Click the puzzle icon next to the address bar and pin Bo cố lên."
   wait_enter
 fi
 
 say "All set!"
 info "Save a word : highlight it on any page, then press Control+Shift+S."
-info "Review      : click the Word Buddy icon, then 'Start review'."
+info "Review      : click the Bo cố lên icon, then 'Start review'."
 info "You do not need to run this script every day. Run it again only to get updates."

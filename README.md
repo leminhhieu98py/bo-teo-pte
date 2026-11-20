@@ -1,4 +1,4 @@
-# Word Buddy
+# Bo cố lên
 
 A private Chrome extension for learning English words.
 
@@ -23,7 +23,7 @@ cd bo-teo-pte
 ```
 
 `start.sh` asks for 3 values the first time (Apps Script URL, Sheet token, Gemini API key),
-then opens Chrome and walks you through "Load unpacked". After that, Word Buddy lives in Chrome;
+then opens Chrome and walks you through "Load unpacked". After that, Bo cố lên lives in Chrome;
 you do not need to run anything every day.
 
 The first time you review, Chrome asks for microphone access: click **Allow**. If macOS blocks
@@ -36,7 +36,7 @@ cd bo-teo-pte
 ./start.sh
 ```
 
-Answer `y` to "already added", then click the reload arrow on the Word Buddy card in
+Answer `y` to "already added", then click the reload arrow on the Bo cố lên card in
 `chrome://extensions`.
 
 ## For the owner: backend setup (one time)
@@ -58,7 +58,7 @@ URL stays the same.
 
 ### 2. Gemini API key
 
-Create a key at <https://aistudio.google.com/apikey>. Word Buddy only uses **flash** models
+Create a key at <https://aistudio.google.com/apikey>. Bo cố lên only uses **flash** models
 (cheap, high free quota). It picks the newest stable flash model automatically; you can choose
 another one in Settings.
 
@@ -70,7 +70,7 @@ in the project folder before running `start.sh`. `config.local.json` is git-igno
 
 ## Settings page
 
-Right-click the Word Buddy icon > **Options**. You can change the URL, token, key and model,
+Right-click the Bo cố lên icon > **Options**. You can change the URL, token, key and model,
 test the Sheet connection, and change the shortcut (`chrome://extensions/shortcuts`).
 Values from `config.local.json` are only used when Settings is empty.
 
@@ -78,7 +78,7 @@ Values from `config.local.json` are only used when Settings is empty.
 
 | Problem | Fix |
 |---|---|
-| Shortcut does nothing | Check `chrome://extensions/shortcuts`; another extension may use it. Right-click a selection > "Save to Word Buddy" also works. |
+| Shortcut does nothing | Check `chrome://extensions/shortcuts`; another extension may use it. Right-click a selection > "Save to Bo cố lên" also works. |
 | "Wrong token" | TOKEN in Code.gs and in Settings must match. Redeploy after changing Code.gs. |
 | "Gemini is busy (quota)" | Free quota per minute reached. Wait a minute. |
 | "I could not hear you" | Speak closer to the mic; check the mic permission above. |
