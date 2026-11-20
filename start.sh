@@ -28,10 +28,13 @@ fi
 
 # 2. Settings (Google Sheet + Gemini). Saved only on this Mac, never pushed to GitHub.
 say "2. Checking settings"
+CHANGE="n"
 if [ -f "$CONFIG" ]; then
-  info "Found $CONFIG. Good."
-else
-  info "First time here. Please enter 3 values (ask your brother for them)."
+  info "Found $CONFIG."
+  read -r -p "  Enter new values (URL, token, key)? [y/N] " CHANGE
+fi
+if [ ! -f "$CONFIG" ] || [[ "$CHANGE" =~ ^[Yy] ]]; then
+  info "Please enter 3 values (ask your brother for them)."
   SHEET_URL=""
   while [[ "$SHEET_URL" != https://script.google.com/* ]]; do
     read -r -p "  Apps Script URL (starts with https://script.google.com/): " SHEET_URL
@@ -50,7 +53,7 @@ else
   "model": ""
 }
 EOF
-  info "Saved to $CONFIG."
+  info "Saved to $CONFIG. Bo co len picks up the new values the next time it opens."
 fi
 
 # 3. Add the extension to Chrome.

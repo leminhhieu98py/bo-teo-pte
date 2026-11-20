@@ -32,7 +32,7 @@ function readSelectionInPage() {
   if (node && node.nodeType === Node.TEXT_NODE) node = node.parentElement;
   const block = node && node.closest ? node.closest('p, li, td, div, section, article, blockquote, h1, h2, h3, h4, span') : null;
   const context = (block && block.innerText) || (node && node.textContent) || '';
-  return { text, context: context.slice(0, 2000) };
+  return { text, context: context.slice(0, 2000), focused: document.hasFocus() };
 }
 
 // Runs inside the page (top frame). Lets the learner drag a rectangle; resolves with the
@@ -158,7 +158,11 @@ async function readSelection(tabId, fallbackText) {
       target: { tabId, allFrames: true },
       func: readSelectionInPage,
     });
-    const hit = results.map((r) => r.result).find(Boolean);
+    const hits = results.map((r) => r.result).filter(Boolean);
+    // Prefer the frame that matches the context menu text, then the focused frame: another
+    // frame may still hold an old selection.
+    const wanted = fallbackText && fallbackText.trim();
+    const hit = (wanted && hits.find((h) => h.text.trim() === wanted)) || hits.find((h) => h.focused) || hits[0];
     if (hit) return hit;
   } catch {
     // Fall through to the context menu text.
@@ -170,19 +174,35 @@ const OFFSCREEN_URL = 'offscreen/offscreen.html';
 
 // Slow Gemini answers (> 30s) would get this service worker terminated, so the network work
 // runs in an offscreen document that reports back with a 'save-result' message.
+// One shared creation promise: two quick saves must not race to create the document.
+let creatingOffscreen = null;
 async function ensureOffscreen() {
   if (chrome.runtime.getContexts) {
     const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
-    if (contexts.length) return;
+    if (contexts.length && !creatingOffscreen) return;
   }
-  try {
-    await chrome.offscreen.createDocument({
-      url: OFFSCREEN_URL,
-      reasons: ['DOM_PARSER'],
-      justification: 'Run slow Gemini and Google Sheets requests outside the service worker.',
-    });
-  } catch (err) {
+  creatingOffscreen = creatingOffscreen || chrome.offscreen.createDocument({
+    url: OFFSCREEN_URL,
+    reasons: ['DOM_PARSER'],
+    justification: 'Run slow Gemini and Google Sheets requests outside the service worker.',
+  }).catch((err) => {
     if (!/single offscreen/i.test(err.message)) throw err;
+  });
+  try {
+    await creatingOffscreen;
+  } finally {
+    creatingOffscreen = null;
+  }
+}
+
+// Sends a job to the offscreen document; retries once if its listener is not ready yet.
+async function sendToOffscreen(message) {
+  try {
+    await chrome.runtime.sendMessage(message);
+  } catch (err) {
+    if (!/receiving end does not exist/i.test(err.message)) throw err;
+    await new Promise((r) => setTimeout(r, 300));
+    await chrome.runtime.sendMessage(message);
   }
 }
 
@@ -221,7 +241,7 @@ async function captureArea(tab) {
     await toast(tabId, 'Reading the picture...', 'loading');
     settings = await getReadySettings();
     await ensureOffscreen();
-    await chrome.runtime.sendMessage({
+    await sendToOffscreen({
       target: 'offscreen',
       type: 'save-image',
       job: { tabId, dataUrl, rect, url: tab.url || '', settings },
@@ -254,7 +274,7 @@ async function saveFromTab(tab, fallbackText) {
     settings = await getReadySettings();
     const context = extractSentence(picked.context, word);
     await ensureOffscreen();
-    await chrome.runtime.sendMessage({
+    await sendToOffscreen({
       target: 'offscreen',
       type: 'save-word',
       job: { tabId, word, context, url: tab.url || '', settings },

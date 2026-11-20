@@ -16,8 +16,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function handle(run, job) {
   // Messages from an offscreen document reset the service worker idle timer.
   const beat = setInterval(() => chrome.runtime.sendMessage({ type: 'keepalive' }).catch(() => {}), HEARTBEAT_MS);
+  let result;
   try {
-    const result = await run(job);
+    result = await run(job);
+  } catch (err) {
+    // Never leave the page with a spinning "Saving..." toast: report every failure.
+    result = { ok: false, error: { name: err?.name || 'Error', code: '', status: 0, message: err?.message || String(err), model: job.settings?.model || '', where: job.dataUrl ? 'save-image' : 'save', word: job.word || '' } };
+  }
+  try {
     // A new message also revives the service worker if it went dormant meanwhile.
     await chrome.runtime.sendMessage({ type: 'save-result', tabId: job.tabId, result }).catch(() => {});
   } finally {
