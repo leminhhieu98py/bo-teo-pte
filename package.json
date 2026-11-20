@@ -1,0 +1,10 @@
+{
+  "name": "word-buddy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Private Chrome extension to save English words and review them with pronunciation grading.",
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}
