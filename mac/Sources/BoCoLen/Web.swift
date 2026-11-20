@@ -63,6 +63,7 @@ final class Web: NSObject, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate 
     if let id = windowId(forPage: page) {
       if url.fragment != nil { views[id]?.load(URLRequest(url: url)) }
       focus(id)
+      onWindowOpened?() // closes the menu bar popover in this case too
       return id
     }
     let (id, view) = makeWebView()
@@ -149,6 +150,11 @@ final class Web: NSObject, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate 
       return
     }
     decisionHandler(.allow)
+  }
+
+  /// A page whose web content process died (memory pressure) is loaded again instead of staying blank.
+  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    webView.reload()
   }
 
   func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,

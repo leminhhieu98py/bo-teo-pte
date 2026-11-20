@@ -17,6 +17,7 @@ final class Saver {
     let saved = (Store.shared.value("appPrefs") as? [String: Any])?["shortcut"] as? String
     hotKey.register(id: saved ?? HotKey.presets[0].id)
     worker.load()
+    toast.prepare()
   }
 
   func setShortcut(_ id: String) {
@@ -26,13 +27,21 @@ final class Saver {
     Store.shared.set(["appPrefs": prefs])
   }
 
+  private var busySince = Date.distantPast
+
   func saveFromShortcut() {
-    guard !busy else { return } // one save at a time
+    // One save at a time. A save cannot take longer than the 60 s timeouts, so a very old busy
+    // flag means something went wrong: unlock instead of ignoring the shortcut forever.
+    if busy && Date().timeIntervalSince(busySince) < 150 {
+      toast.show("Still saving the last word, one moment...", kind: "info")
+      return
+    }
     guard Permissions.accessibilityGranted(prompt: true) else {
       toast.show("Bo cố lên needs Accessibility to read the highlighted word. Allow it in System Settings, then try again.", kind: "info")
       return
     }
     busy = true
+    busySince = Date()
     // Let the shortcut keys come up before reading the selection.
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
       let picked = Selection.read()
@@ -206,63 +215,74 @@ enum Capture {
 // MARK: - Worker web view
 
 /// Hidden page (native/worker.html) that runs lib/save.js, so saving uses the tested JS code.
+/// It reloads itself if its web content process dies, and fails queued jobs if it cannot load.
 final class Worker: NSObject, WKNavigationDelegate {
+  private typealias Job = (method: String, job: [String: Any], done: ([String: Any]) -> Void)
   private var view: WKWebView?
   private var ready = false
-  private var waiting: [() -> Void] = []
+  private var waiting: [Job] = []
 
   func load() {
-    let (_, view) = Web.shared.makeWebView()
-    view.navigationDelegate = self
-    view.load(URLRequest(url: WebRoot.url("native/worker.html")))
-    self.view = view
+    if view == nil {
+      let (_, view) = Web.shared.makeWebView()
+      view.navigationDelegate = self
+      self.view = view
+    }
+    ready = false
+    view?.load(URLRequest(url: WebRoot.url("native/worker.html")))
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     ready = true
-    waiting.forEach { $0() }
+    let jobs = waiting
     waiting.removeAll()
+    jobs.forEach { send($0) }
+  }
+
+  func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { loadFailed(error) }
+  func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { loadFailed(error) }
+
+  private func loadFailed(_ error: Error) {
+    ready = false
+    let jobs = waiting
+    waiting.removeAll()
+    jobs.forEach { $0.done(["message": "The saver could not start. Please try again.", "kind": "error", "detail": error.localizedDescription]) }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.load() }
+  }
+
+  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    load() // queued jobs run when the page is back
   }
 
   func run(_ method: String, _ job: [String: Any], completion: @escaping ([String: Any]) -> Void) {
-    let go = { [weak self] in
-      guard let view = self?.view else { return completion(["message": "The saver is not ready.", "kind": "error"]) }
-      view.callAsyncJavaScript("return await window.boWorker.\(method)(job)", arguments: ["job": job], in: nil, in: .page) { result in
-        switch result {
-        case .success(let value): completion(value as? [String: Any] ?? ["message": "Something went wrong.", "kind": "error"])
-        case .failure(let error): completion(["message": "Could not save the word.", "kind": "error", "detail": error.localizedDescription])
-        }
+    let item: Job = (method, job, completion)
+    if ready { send(item) } else { waiting.append(item) }
+  }
+
+  private func send(_ item: Job) {
+    guard let view else { return item.done(["message": "The saver is not ready.", "kind": "error"]) }
+    view.callAsyncJavaScript("return await window.boWorker.\(item.method)(job)", arguments: ["job": item.job], in: nil, in: .page) { result in
+      switch result {
+      case .success(let value): item.done(value as? [String: Any] ?? ["message": "Something went wrong.", "kind": "error"])
+      case .failure(let error): item.done(["message": "Could not save the word.", "kind": "error", "detail": error.localizedDescription])
       }
     }
-    if ready { go() } else { waiting.append(go) }
   }
 }
 
 // MARK: - Toast
 
-/// The same cute toast as the extension, floating at the top right of the screen.
-final class Toast {
+/// The same cute toast as the extension, floating at the top right of the screen. Messages that
+/// arrive before the toast page has loaded are kept and shown once it is ready.
+final class Toast: NSObject, WKNavigationDelegate {
   private var panel: NSPanel?
   private var view: WKWebView?
+  private var loaded = false
+  private var pending: (message: String, kind: String, detail: String)?
   private var hideWork: DispatchWorkItem?
 
-  func show(_ message: String, kind: String, detail: String = "") {
-    let panel = self.panel ?? makePanel()
-    let args: [String: Any] = ["message": message, "kind": kind, "detail": detail]
-    view?.callAsyncJavaScript("window.showToast && window.showToast(message, kind, detail)", arguments: args, in: nil, in: .page, completionHandler: nil)
-    if let screen = NSScreen.main {
-      let frame = screen.visibleFrame
-      panel.setFrameOrigin(NSPoint(x: frame.maxX - panel.frame.width - 12, y: frame.maxY - panel.frame.height - 8))
-    }
-    panel.orderFrontRegardless()
-    hideWork?.cancel()
-    guard kind != "loading" else { return }
-    let work = DispatchWorkItem { [weak self] in self?.panel?.orderOut(nil) }
-    hideWork = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + (kind == "error" ? 10 : 4.5), execute: work)
-  }
-
-  private func makePanel() -> NSPanel {
+  func prepare() {
+    guard panel == nil else { return }
     let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 150),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     panel.isFloatingPanel = true
@@ -273,10 +293,43 @@ final class Toast {
     panel.ignoresMouseEvents = true
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     let (_, view) = Web.shared.makeWebView(transparent: true)
+    view.navigationDelegate = self
     view.load(URLRequest(url: WebRoot.url("native/toast.html")))
     panel.contentView = view
     self.panel = panel
     self.view = view
-    return panel
+  }
+
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    loaded = true
+    if let pending {
+      self.pending = nil
+      show(pending.message, kind: pending.kind, detail: pending.detail)
+    }
+  }
+
+  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    loaded = false
+    webView.reload()
+  }
+
+  func show(_ message: String, kind: String, detail: String = "") {
+    prepare()
+    guard loaded, let panel else {
+      pending = (message, kind, detail)
+      return
+    }
+    let args: [String: Any] = ["message": message, "kind": kind, "detail": detail]
+    view?.callAsyncJavaScript("window.showToast(message, kind, detail)", arguments: args, in: nil, in: .page, completionHandler: nil)
+    if let screen = NSScreen.main {
+      let frame = screen.visibleFrame
+      panel.setFrameOrigin(NSPoint(x: frame.maxX - panel.frame.width - 12, y: frame.maxY - panel.frame.height - 8))
+    }
+    panel.orderFrontRegardless()
+    hideWork?.cancel()
+    guard kind != "loading" else { return }
+    let work = DispatchWorkItem { [weak self] in self?.panel?.orderOut(nil) }
+    hideWork = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + (kind == "error" ? 10 : 4.5), execute: work)
   }
 }

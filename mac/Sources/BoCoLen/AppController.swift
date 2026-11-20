@@ -15,6 +15,15 @@ final class AppController: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     if SelfTest.runIfRequested() { return }
 
+    // Only one copy may run: two copies would overwrite each other's storage file.
+    let me = ProcessInfo.processInfo.processIdentifier
+    if let other = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+      .first(where: { $0.processIdentifier != me }) {
+      other.activate()
+      NSApp.terminate(nil)
+      return
+    }
+
     store.onChange = { [weak self] changes in self?.web.broadcast(changes: changes) }
     web.handler = { [weak self] action, body, viewId, reply in self?.handle(action, body, viewId, reply) }
     web.onWindowOpened = { [weak self] in self?.popover.performClose(nil) }
