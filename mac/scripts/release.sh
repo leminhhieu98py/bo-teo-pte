@@ -6,6 +6,10 @@
 set -euo pipefail
 MAC="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${1:?usage: release.sh <version> [notes]}"
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Version must look like 1.0.1 (no leading v)." >&2
+  exit 1
+fi
 NOTES="${2:-Bo co len $VERSION}"
 IDENTITY="${BOCOLEN_SIGN_IDENTITY:?Set BOCOLEN_SIGN_IDENTITY to your code signing identity}"
 REPO="leminhhieu98py/bo-teo-pte"

@@ -130,8 +130,8 @@ final class AppController: NSObject, NSApplicationDelegate {
     case "shortcut.list":
       reply(HotKey.presets.map { ["id": $0.id, "label": $0.label] })
     case "shortcut.set":
-      saver.setShortcut(body["id"] as? String ?? "")
-      reply(saver.hotKey.current.label)
+      let ok = saver.setShortcut(body["id"] as? String ?? "")
+      reply(["ok": ok, "label": saver.hotKey.current.label, "id": saver.hotKey.current.id])
     case "app.info":
       reply([
         "version": Updater.currentVersion,

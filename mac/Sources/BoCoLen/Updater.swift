@@ -37,22 +37,28 @@ final class Updater {
         let assets = json["assets"] as? [[String: Any]] ?? []
         let zip = assets.first { ($0["name"] as? String ?? "").hasSuffix(".zip") }?["browser_download_url"] as? String
         if Self.isNewer(version, than: Self.currentVersion), let zip, let url = URL(string: zip) {
-          self.available = Release(version: version, zip: url)
           result = "available"
-          DispatchQueue.main.async { Store.shared.set(["update": ["version": version]]) }
+          DispatchQueue.main.async {
+            self.available = Release(version: version, zip: url) // only touched on the main thread
+            Store.shared.set(["update": ["version": version]])
+          }
         } else {
-          self.available = nil
           result = "latest"
-          DispatchQueue.main.async { Store.shared.set(["update": ["version": ""]]) }
+          DispatchQueue.main.async {
+            self.available = nil
+            Store.shared.set(["update": ["version": ""]])
+          }
         }
       }
       DispatchQueue.main.async { completion?(result) }
     }.resume()
   }
 
+  /// "1.2.10" > "1.2.9". Each part uses its leading digits ("3-beta" -> 3).
   static func isNewer(_ a: String, than b: String) -> Bool {
-    let pa = a.split(separator: ".").map { Int($0) ?? 0 }
-    let pb = b.split(separator: ".").map { Int($0) ?? 0 }
+    let number = { (part: Substring) in Int(part.prefix { $0.isNumber }) ?? 0 }
+    let pa = a.split(separator: ".").map(number)
+    let pb = b.split(separator: ".").map(number)
     for i in 0..<max(pa.count, pb.count) {
       let x = i < pa.count ? pa[i] : 0
       let y = i < pb.count ? pb[i] : 0
@@ -77,6 +83,12 @@ final class Updater {
           .first(where: { $0.pathExtension == "app" }) else { return fail("The update has no app inside.") }
         guard Self.signedLikeMe(newApp) else {
           return fail("This update is not signed by the Bo cố lên publisher, so it was not installed.")
+        }
+        // The app inside must really be newer, or the same update would be offered forever.
+        let plist = NSDictionary(contentsOf: newApp.appendingPathComponent("Contents/Info.plist"))
+        let newVersion = plist?["CFBundleShortVersionString"] as? String ?? "0"
+        guard Self.isNewer(newVersion, than: Self.currentVersion) else {
+          return fail("The downloaded app (version \(newVersion)) is not newer than this one, so it was not installed.")
         }
         let current = Bundle.main.bundleURL
         _ = try FileManager.default.replaceItemAt(current, withItemAt: newApp)

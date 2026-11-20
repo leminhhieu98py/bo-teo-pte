@@ -20,11 +20,13 @@ final class Saver {
     toast.prepare()
   }
 
-  func setShortcut(_ id: String) {
-    hotKey.register(id: id)
+  /// False when macOS refused the combo (the previous shortcut is kept).
+  func setShortcut(_ id: String) -> Bool {
+    let ok = hotKey.register(id: id)
     var prefs = Store.shared.value("appPrefs") as? [String: Any] ?? [:]
     prefs["shortcut"] = hotKey.current.id
     Store.shared.set(["appPrefs": prefs])
+    return ok
   }
 
   private var busySince = Date.distantPast
@@ -101,13 +103,29 @@ final class HotKey {
   private var installed = false
   var onPress: (() -> Void)?
 
-  func register(id: String) {
-    current = Self.presets.first { $0.id == id } ?? Self.presets[0]
+  /// Registers the preset; if macOS refuses it (another app owns the combo), the previous shortcut
+  /// stays active and false is returned.
+  @discardableResult
+  func register(id: String) -> Bool {
+    let wanted = Self.presets.first { $0.id == id } ?? Self.presets[0]
+    installHandlerOnce()
     if let ref { UnregisterEventHotKey(ref) }
     ref = nil
-    installHandlerOnce()
+    if tryRegister(wanted) {
+      current = wanted
+      return true
+    }
+    _ = tryRegister(current)
+    return false
+  }
+
+  private func tryRegister(_ preset: Preset) -> Bool {
+    var newRef: EventHotKeyRef?
     let hotKeyId = EventHotKeyID(signature: OSType(0x4243_4C4E), id: 1) // "BCLN"
-    RegisterEventHotKey(UInt32(current.key), UInt32(current.mods), hotKeyId, GetApplicationEventTarget(), 0, &ref)
+    let status = RegisterEventHotKey(UInt32(preset.key), UInt32(preset.mods), hotKeyId, GetApplicationEventTarget(), 0, &newRef)
+    guard status == noErr, let newRef else { return false }
+    ref = newRef
+    return true
   }
 
   private func installHandlerOnce() {
@@ -131,6 +149,7 @@ enum Selection {
   static func read() -> (text: String, context: String, app: String) {
     let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
     let system = AXUIElementCreateSystemWide()
+    AXUIElementSetMessagingTimeout(system, 0.5) // a hung app must not freeze Bo co len
     var focused: CFTypeRef?
     if AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
        let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() {
@@ -138,12 +157,28 @@ enum Selection {
       var selected: CFTypeRef?
       if AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selected) == .success,
          let text = selected as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        var value: CFTypeRef?
-        AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value)
-        return (text, String(((value as? String) ?? "").prefix(4000)), appName)
+        return (text, context(of: element), appName)
       }
     }
     return (copySelection(), "", appName)
+  }
+
+  /// About 4000 characters of the field's text around the selection (for the example sentence).
+  private static func context(of element: AXUIElement) -> String {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success,
+          let full = value as? String else { return "" }
+    let text = full as NSString
+    var location = 0
+    var rangeValue: CFTypeRef?
+    if AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeValue) == .success,
+       let rangeValue, CFGetTypeID(rangeValue) == AXValueGetTypeID() {
+      var range = CFRange()
+      if AXValueGetValue(rangeValue as! AXValue, .cfRange, &range) { location = range.location }
+    }
+    let start = max(0, min(text.length, location - 2000))
+    let length = min(4000, text.length - start)
+    return text.substring(with: NSRange(location: start, length: length))
   }
 
   private static func copySelection() -> String {
@@ -167,12 +202,24 @@ enum Selection {
     while board.changeCount == before && Date() < deadline {
       RunLoop.current.run(until: Date().addingTimeInterval(0.02))
     }
-    let text = board.changeCount != before ? (board.string(forType: .string) ?? "") : ""
-    if board.changeCount != before {
-      board.clearContents()
-      if !saved.isEmpty { board.writeObjects(saved) }
+    // Password managers mark secrets as concealed/transient: never put those back.
+    let secret = saved.contains { item in
+      item.types.contains { ["org.nspasteboard.ConcealedType", "org.nspasteboard.TransientType"].contains($0.rawValue) }
     }
-    return text
+    let restore = {
+      board.clearContents()
+      if !saved.isEmpty && !secret { board.writeObjects(saved) }
+    }
+    if board.changeCount != before {
+      let text = board.string(forType: .string) ?? ""
+      restore()
+      return text
+    }
+    // The app may still copy after we gave up: put the learner's clipboard back if it does.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+      if board.changeCount != before { restore() }
+    }
+    return ""
   }
 }
 

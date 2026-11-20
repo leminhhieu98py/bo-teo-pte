@@ -160,8 +160,10 @@ async function setUpMacApp() {
     return option;
   }));
   $('hotkey').addEventListener('change', async () => {
-    const label = await call('shortcut.set', { id: $('hotkey').value });
-    $('shortcut').textContent = label;
+    const result = await call('shortcut.set', { id: $('hotkey').value });
+    $('shortcut').textContent = result.label;
+    $('hotkey').value = result.id;
+    if (!result.ok) status(`That shortcut is used by another app. Still using ${result.label}.`, 'err');
   });
 
   const info = await call('app.info');

@@ -44,7 +44,10 @@ final class Store {
 
   private func persist() {
     guard JSONSerialization.isValidJSONObject(data),
-          let raw = try? JSONSerialization.data(withJSONObject: data, options: [.sortedKeys]) else { return }
+          let raw = try? JSONSerialization.data(withJSONObject: data, options: [.sortedKeys]) else {
+      NSLog("BoCoLen: storage holds a value that is not JSON; it was not saved")
+      return
+    }
     let tmp = fileURL.appendingPathExtension("tmp")
     do {
       try raw.write(to: tmp, options: .atomic)
