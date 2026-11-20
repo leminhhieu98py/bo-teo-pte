@@ -3,9 +3,10 @@ import { setMood } from '../ui/mascot.js';
 import { ICONS, starSvg } from '../ui/icons.js';
 import {
   getSettings, getReadySettings, missingSettings, SetupError, getSession, saveSession,
-  getStreak, saveStreak, getPrefs, savePrefs, enqueueReviews, takeQueuedReviews,
+  getStreak, saveStreak, getPrefs, savePrefs, enqueueReviews, takeQueuedReviews, appendErrorLog,
 } from '../lib/storage.js';
 import { listWords, postReview } from '../lib/sheet.js';
+import { errorEntry, formatDetail } from '../lib/errors.js';
 import { gradePronunciation, GeminiError } from '../lib/gemini.js';
 import { buildDailySet, todayKey, toBool } from '../lib/daily.js';
 import {
@@ -58,9 +59,17 @@ function say(text, mood) {
   if (mood) setMood($('mascot'), mood);
 }
 
-function toastLine(text, kind = '') {
+function toastLine(text, kind = '', detail = '') {
   $('toastLine').textContent = text;
   $('toastLine').className = `toast-line ${kind}`;
+  $('toastDetail').textContent = detail;
+}
+
+// Logs the error (Settings > Error log) and returns the technical detail line.
+function logError(err, where) {
+  const entry = errorEntry(err, { where, model: err?.name === 'SheetError' ? '' : app.settings?.model, word: app.word?.word });
+  appendErrorLog(entry);
+  return formatDetail(entry);
 }
 
 function shake(el) {
@@ -104,7 +113,9 @@ function errorText(err) {
   if (err instanceof SetupError) return `Setup needed: ${err.message}`;
   if (err instanceof GeminiError && err.code === 'quota') return 'Gemini is busy right now. Wait 10 seconds and try again.';
   if (err instanceof GeminiError && err.code === 'auth') return 'The Gemini API key does not work. Please check Settings.';
-  return `Oops: ${err.message}`;
+  if (err instanceof GeminiError && err.code === 'timeout') return 'Gemini took too long to answer. Please try again.';
+  if (err instanceof GeminiError && err.status === 503) return 'Gemini is overloaded right now. Try again in a minute.';
+  return 'Mochi could not grade this time. Please try again.';
 }
 
 function micErrorText(err) {
@@ -161,7 +172,7 @@ async function init() {
   try {
     words = (await listWords({ url: settings.sheetUrl, token: settings.token })).filter((w) => w.id && w.word);
   } catch (err) {
-    showMessage('Cannot open your word list', err.message, 'Try again', () => location.reload(), 'oops');
+    showMessage('Cannot open your word list', logError(err, 'sheet'), 'Try again', () => location.reload(), 'oops');
     return;
   }
   if (!words.length) {
@@ -418,7 +429,7 @@ async function stopRecord() {
     $('grading').hidden = true;
     $('micZone').hidden = false;
     say('Something went wrong, not your fault!', 'oops');
-    toastLine(errorText(err), 'bad');
+    toastLine(errorText(err), 'bad', logError(err, 'grade'));
   } finally {
     app.busy = false;
   }

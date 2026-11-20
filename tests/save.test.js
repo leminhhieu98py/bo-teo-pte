@@ -31,11 +31,23 @@ test('runSaveJob enriches the word and adds it to the sheet with the source url'
 test('runSaveJob turns errors into a plain payload', async () => {
   const fetchImpl = router({ gemini: () => [429, { error: { message: 'quota' } }], sheet: () => [200, {}] });
   const result = await runSaveJob({ word: 'a', context: '', url: '', settings }, { fetchImpl });
-  assert.deepEqual(result, { ok: false, error: { name: 'GeminiError', code: 'quota', message: 'quota' } });
+  assert.deepEqual(result, {
+    ok: false,
+    error: { name: 'GeminiError', code: 'quota', status: 429, message: 'quota', model: 'gemini-3.5-flash', where: 'save', word: 'a' },
+  });
+});
+
+test('describeSaveResult adds a detail line for errors', () => {
+  const out = describeSaveResult({
+    ok: false,
+    error: { name: 'GeminiError', code: 'other', status: 503, message: 'high demand', model: 'gemini-3.1-flash-lite', where: 'save', word: 'a' },
+  });
+  assert.equal(out.detail, 'gemini-3.1-flash-lite · HTTP 503 · other: high demand');
+  assert.equal(describeSaveResult({ ok: true, status: 'added', word: { word: 'a', meaning_vi: 'b' } }).detail, '');
 });
 
 test('describeSaveResult explains each outcome', () => {
-  assert.deepEqual(describeSaveResult({ ok: true, status: 'added', word: { word: 'a', meaning_vi: 'b' } }), { message: 'Saved "a" - b', kind: 'success' });
+  assert.deepEqual(describeSaveResult({ ok: true, status: 'added', word: { word: 'a', meaning_vi: 'b' } }), { message: 'Saved "a" - b', kind: 'success', detail: '' });
   assert.equal(describeSaveResult({ ok: true, status: 'exists', word: { word: 'a', meaning_vi: 'b' } }).kind, 'info');
   assert.match(describeSaveResult({ ok: false, error: { name: 'GeminiError', code: 'timeout', message: 'x' } }).message, /too long/);
   assert.match(describeSaveResult({ ok: false, error: { name: 'GeminiError', code: 'quota', message: 'x' } }).message, /quota/);

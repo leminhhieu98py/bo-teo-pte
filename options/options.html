@@ -16,6 +16,10 @@
     .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     .row .input { flex: 1; min-width: 200px; }
     select.input { appearance: auto; }
+    .log { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-direction: column; gap: 8px; }
+    .log li { background: #F8F6FF; border-radius: 12px; padding: 10px 12px; font: 500 12px/1.45 ui-monospace, Menlo, monospace; word-break: break-word; }
+    .log li b { font-family: inherit; color: var(--primary); }
+    .log .empty { background: none; color: var(--ink-soft); font-family: inherit; font-weight: 700; padding: 0; }
   </style>
 </head>
 <body>
@@ -61,6 +65,16 @@
       <h3>Shortcut</h3>
       <p style="margin-top:0;font-weight:700">Save a word: highlight it, then press <b id="shortcut">...</b></p>
       <button class="btn btn-ghost" id="changeShortcut">Change shortcut</button>
+    </div>
+    <div class="card">
+      <h3>Error log</h3>
+      <p style="margin-top:0;font-weight:700;color:var(--ink-soft)">The last 20 problems with Gemini or Google Sheet. Copy and send it when something goes wrong.</p>
+      <div class="row">
+        <button class="btn btn-ghost" id="copyLog">Copy error log</button>
+        <button class="btn btn-ghost" id="clearLog">Clear</button>
+        <span class="status" id="logStatus"></span>
+      </div>
+      <ul class="log" id="errorLog"></ul>
     </div>
   </main>
   <script type="module" src="options.js"></script>

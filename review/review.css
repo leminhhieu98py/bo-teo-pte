@@ -96,6 +96,8 @@ body { min-height: 100vh; overflow-x: hidden; }
 .toast-line.good { color: var(--mint); }
 .toast-line.bad { color: var(--red); }
 .toast-line.info { color: var(--primary); }
+.toast-detail { text-align: center; margin-top: 4px; font: 500 12px/1.4 ui-monospace, Menlo, monospace; color: var(--ink-soft); word-break: break-word; }
+.toast-detail:empty { display: none; }
 
 /* Speaking */
 .word-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }

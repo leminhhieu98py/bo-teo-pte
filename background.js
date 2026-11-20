@@ -1,7 +1,8 @@
 // Service worker: saves the selected word when the shortcut or the context menu is used.
 import { validateSelection, extractSentence } from './lib/text.js';
-import { describeSaveResult } from './lib/save.js';
-import { getReadySettings, getSettings, missingSettings } from './lib/storage.js';
+import { describeSaveResult, errorPayload } from './lib/save.js';
+import { errorEntry } from './lib/errors.js';
+import { getReadySettings, getSettings, missingSettings, appendErrorLog } from './lib/storage.js';
 
 const MENU_ID = 'save-word';
 
@@ -34,7 +35,7 @@ function readSelectionInPage() {
 }
 
 // Runs inside the page (top frame). Must be self-contained.
-function showToastInPage(message, kind) {
+function showToastInPage(message, kind, detail) {
   const HOST_ID = 'word-buddy-toast-host';
   let host = document.getElementById(HOST_ID);
   if (!host) {
@@ -61,20 +62,23 @@ function showToastInPage(message, kind) {
         display: grid; place-items: center; color: #fff; font-size: 18px; }
       .spin { width: 16px; height: 16px; border: 3px solid rgba(255,255,255,.4);
         border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }
+      .detail { margin-top: 4px; font: 500 12px/1.35 ui-monospace, Menlo, monospace; color: #6E6590; word-break: break-word; }
+      .detail:empty { display: none; }
       @keyframes pop { from { transform: translateY(-12px) scale(.9); opacity: 0; } }
       @keyframes spin { to { transform: rotate(360deg); } }
     </style>
-    <div class="toast"><div class="dot">${kind === 'loading' ? '<div class="spin"></div>' : kind === 'success' ? '&#10003;' : '!'}</div><div class="msg"></div></div>`;
+    <div class="toast"><div class="dot">${kind === 'loading' ? '<div class="spin"></div>' : kind === 'success' ? '&#10003;' : '!'}</div><div><div class="msg"></div><div class="detail"></div></div></div>`;
   host.shadowRoot.querySelector('.msg').textContent = message;
+  host.shadowRoot.querySelector('.detail').textContent = detail || '';
   clearTimeout(window.__wordBuddyToastTimer);
   if (kind !== 'loading') {
-    window.__wordBuddyToastTimer = setTimeout(() => host.remove(), kind === 'error' ? 6000 : 4000);
+    window.__wordBuddyToastTimer = setTimeout(() => host.remove(), kind === 'error' ? 10000 : 4000);
   }
 }
 
-async function toast(tabId, message, kind) {
+async function toast(tabId, message, kind, detail = '') {
   try {
-    await chrome.scripting.executeScript({ target: { tabId }, func: showToastInPage, args: [message, kind] });
+    await chrome.scripting.executeScript({ target: { tabId }, func: showToastInPage, args: [message, kind, detail] });
   } catch {
     // Pages like chrome:// cannot be scripted; nothing else to do.
   }
@@ -114,14 +118,13 @@ async function ensureOffscreen() {
   }
 }
 
-function errorPayload(err) {
-  return { ok: false, error: { name: err?.name || 'Error', code: err?.code || '', message: err?.message || String(err) } };
-}
-
 async function showResult(tabId, result) {
-  const { message, kind } = describeSaveResult(result);
-  await toast(tabId, message, kind);
-  if (result.error?.name === 'SetupError') chrome.runtime.openOptionsPage();
+  const { message, kind, detail } = describeSaveResult(result);
+  await toast(tabId, message, kind, detail);
+  if (!result.ok) {
+    await appendErrorLog(errorEntry(result.error, { where: result.error.where }));
+    if (result.error.name === 'SetupError') chrome.runtime.openOptionsPage();
+  }
 }
 
 chrome.runtime.onMessage.addListener((message) => {
@@ -143,8 +146,9 @@ async function saveFromTab(tab, fallbackText) {
 
   const word = check.value;
   await toast(tabId, `Saving "${word}"...`, 'loading');
+  let settings;
   try {
-    const settings = await getReadySettings();
+    settings = await getReadySettings();
     const context = extractSentence(picked.context, word);
     await ensureOffscreen();
     await chrome.runtime.sendMessage({
@@ -153,6 +157,6 @@ async function saveFromTab(tab, fallbackText) {
       job: { tabId, word, context, url: tab.url || '', settings },
     });
   } catch (err) {
-    await showResult(tabId, errorPayload(err));
+    await showResult(tabId, { ok: false, error: errorPayload(err, { where: 'save', model: settings?.model, word }) });
   }
 }

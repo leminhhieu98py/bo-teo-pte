@@ -1,5 +1,6 @@
 import { setMood } from '../ui/mascot.js';
-import { getSettings, saveSettings } from '../lib/storage.js';
+import { getSettings, saveSettings, getErrorLog, clearErrorLog } from '../lib/storage.js';
+import { errorEntry, formatDetail } from '../lib/errors.js';
 import { listModels, filterFlashModels, pickDefaultModel } from '../lib/gemini.js';
 import { listWords } from '../lib/sheet.js';
 
@@ -50,7 +51,7 @@ $('loadModels').addEventListener('click', async () => {
     if (best && !$('model').value) $('model').value = best;
     status(`Found ${names.length} flash models. Press Save.`, 'ok');
   } catch (err) {
-    status(err.message, 'err');
+    status(formatDetail(errorEntry(err, { where: 'models' })), 'err');
   }
 });
 
@@ -60,7 +61,7 @@ $('testSheet').addEventListener('click', async () => {
     const words = await listWords({ url: $('sheetUrl').value.trim(), token: $('token').value.trim() });
     status(`Connected! ${words.length} words in the sheet.`, 'ok');
   } catch (err) {
-    status(err.message, 'err');
+    status(formatDetail(errorEntry(err, { where: 'sheet' })), 'err');
   }
 });
 
@@ -68,4 +69,47 @@ $('changeShortcut').addEventListener('click', () => {
   chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
 });
 
+function logLine(entry) {
+  const when = new Date(entry.time).toLocaleString();
+  return `${when} | ${entry.where || '-'} | word: ${entry.word || '-'} | ${formatDetail(entry)}`;
+}
+
+async function renderLog() {
+  const log = await getErrorLog();
+  if (!log.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'No errors. Everything is fine!';
+    $('errorLog').replaceChildren(li);
+    return;
+  }
+  $('errorLog').replaceChildren(...log.map((entry) => {
+    const li = document.createElement('li');
+    const b = document.createElement('b');
+    b.textContent = `${new Date(entry.time).toLocaleString()} · ${entry.where || '-'}${entry.word ? ` · "${entry.word}"` : ''}`;
+    li.append(b, document.createElement('br'), formatDetail(entry));
+    return li;
+  }));
+}
+
+$('copyLog').addEventListener('click', async () => {
+  const log = await getErrorLog();
+  const text = log.length ? log.map(logLine).join('\n') : 'No errors.';
+  try {
+    await navigator.clipboard.writeText(text);
+    $('logStatus').textContent = 'Copied!';
+    $('logStatus').className = 'status ok';
+  } catch {
+    $('logStatus').textContent = 'Could not copy. Select the text below instead.';
+    $('logStatus').className = 'status err';
+  }
+});
+
+$('clearLog').addEventListener('click', async () => {
+  await clearErrorLog();
+  $('logStatus').textContent = '';
+  renderLog();
+});
+
 load();
+renderLog();
