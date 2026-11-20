@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { updateStreak, starsForScore, xpForCard, pickMessage, MESSAGE_KINDS } from '../lib/progress.js';
+import { updateStreak, currentStreak, starsForScore, xpForCard, pickMessage, MESSAGE_KINDS } from '../lib/progress.js';
 
 test('updateStreak keeps the count on the same day', () => {
   assert.deepEqual(updateStreak({ count: 4, lastDate: '2026-11-20' }, '2026-11-20'), { count: 4, lastDate: '2026-11-20' });
@@ -13,6 +13,13 @@ test('updateStreak increments after yesterday, across month boundary', () => {
 test('updateStreak resets after a gap or with no history', () => {
   assert.deepEqual(updateStreak({ count: 9, lastDate: '2026-11-10' }, '2026-11-20'), { count: 1, lastDate: '2026-11-20' });
   assert.deepEqual(updateStreak(undefined, '2026-11-20'), { count: 1, lastDate: '2026-11-20' });
+});
+
+test('currentStreak shows the streak only while it is alive', () => {
+  assert.equal(currentStreak({ count: 3, lastDate: '2026-11-20' }, '2026-11-20'), 3);
+  assert.equal(currentStreak({ count: 3, lastDate: '2026-11-19' }, '2026-11-20'), 3);
+  assert.equal(currentStreak({ count: 3, lastDate: '2026-11-18' }, '2026-11-20'), 0);
+  assert.equal(currentStreak({ count: 0, lastDate: '' }, '2026-11-20'), 0);
 });
 
 test('starsForScore boundaries', () => {

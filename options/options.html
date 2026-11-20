@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Word Buddy Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../ui/theme.css">
+  <style>
+    main { max-width: 620px; margin: 40px auto; padding: 0 16px; }
+    .head { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+    .head .mascot { width: 90px; height: 82px; }
+    .head p { margin: 4px 0 0; color: var(--ink-soft); font-weight: 700; }
+    .card + .card { margin-top: 18px; }
+    .card h3 { margin-bottom: 14px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .row .input { flex: 1; min-width: 200px; }
+    select.input { appearance: auto; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="head">
+      <div class="mascot" id="mascot"></div>
+      <div>
+        <h1>Settings</h1>
+        <p>Usually filled in by start.sh. Change only if something is wrong.</p>
+      </div>
+    </div>
+
+    <form class="card" id="form">
+      <h3>Connections</h3>
+      <div class="field">
+        <label for="sheetUrl">Google Apps Script URL</label>
+        <input class="input" id="sheetUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="token">Sheet token</label>
+        <input class="input" id="token" type="password" autocomplete="off">
+        <small>Same value as TOKEN in Code.gs.</small>
+      </div>
+      <div class="field">
+        <label for="apiKey">Gemini API key</label>
+        <input class="input" id="apiKey" type="password" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="model">Gemini flash model</label>
+        <div class="row">
+          <select class="input" id="model"><option value="">Auto (newest flash)</option></select>
+          <button class="btn btn-ghost" type="button" id="loadModels">Load models</button>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn btn-primary" type="submit">Save</button>
+        <button class="btn btn-ghost" type="button" id="testSheet">Test Google Sheet</button>
+        <span class="status" id="status"></span>
+      </div>
+    </form>
+
+    <div class="card">
+      <h3>Shortcut</h3>
+      <p style="margin-top:0;font-weight:700">Save a word: highlight it, then press <b id="shortcut">...</b></p>
+      <button class="btn btn-ghost" id="changeShortcut">Change shortcut</button>
+    </div>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>
