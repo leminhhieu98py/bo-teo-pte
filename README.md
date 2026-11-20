@@ -19,7 +19,35 @@ A private Chrome extension for learning English words.
 
 Mochi the cat cheers you on with confetti, stars, combos, XP and a daily streak.
 
-## For the learner: install (one time)
+## For the learner: the Mac app (recommended)
+
+The Mac app shows the same pages as the Chrome extension, works in every app (not only Chrome)
+and **updates itself**. No git, no terminal.
+
+1. Open the newest release: <https://github.com/leminhhieu98py/bo-teo-pte/releases/latest> and
+   download `BoCoLen-<version>.zip`.
+2. Double-click the zip, then drag **Bo cố lên** into **Applications**.
+3. The first time only: right-click the app in Applications > **Open** > **Open** (the app is not
+   from the App Store, so macOS asks once).
+4. Settings opens: paste the Apps Script URL, the token and the Gemini key (ask your brother), press
+   **Save**, then **Test Google Sheet**.
+5. In the **Mac app** box of Settings, press **Allow** for Accessibility, Screen Recording and
+   Microphone, and switch the app on in each System Settings list.
+
+Daily use:
+
+| What | How |
+|---|---|
+| Save a word | Highlight it in any app and press **Control+Option+B** (change it in Settings) |
+| Save from the site's explanation | Press the shortcut with nothing highlighted, drag a box around the explanation |
+| Review | Click Mochi in the menu bar > **Start review**, or click the app in the Dock |
+| History | Mochi in the menu bar > **History** |
+
+Updates: the app checks GitHub every few hours. When a new version is out, Mochi's menu shows
+**Update to vX**; one click installs it and restarts the app. Settings > **Check for updates**
+does the same on demand. The app only installs updates signed by the same publisher.
+
+## For the learner: the Chrome extension (alternative)
 
 Requirements: macOS, Google Chrome, git.
 
@@ -63,11 +91,14 @@ The sheet tab `Words` and its header row are created automatically on first use.
 After editing `Code.gs` later, use **Deploy > Manage deployments > Edit > New version** so the
 URL stays the same.
 
-### Updating Code.gs later
+### Updating Code.gs later (the URL never changes)
 
 When `apps-script/Code.gs` changes (for example the History tab was added), paste the new file
 into Apps Script, keep your own `TOKEN` (and `SHEET_ID`) values, save, then
-**Deploy > Manage deployments > Edit (pencil) > Version: New version > Deploy**. The URL stays the same.
+**Deploy > Manage deployments > Edit (pencil) > Version: New version > Deploy**. The URL stays the same, so the app settings never need a new link.
+Only **New deployment** creates a new URL: never use it for updates. If you have several
+deployments, update the one whose URL is in the app settings (compare the URLs in Manage
+deployments) and archive the others.
 
 ### 2. Gemini API key
 
@@ -97,6 +128,22 @@ Values from `config.local.json` are only used when Settings is empty.
 | "I could not hear you" | Speak closer to the mic; check the mic permission above. |
 | Grading feels wrong | Gemini is a good but not perfect judge. Listen to the sample, try again, or skip after 3 tries. |
 
+## Releasing a new Mac version (owner)
+
+Needs the Swift command line tools (no Xcode) and a code signing identity. Always use the SAME
+identity: macOS keeps the permissions, and the app accepts updates, only from the same signer.
+
+```bash
+BOCOLEN_SIGN_IDENTITY="Otis Self Signed" mac/scripts/release.sh 1.0.1 "What changed"
+```
+
+It builds `mac/dist/BoCoLen-1.0.1.zip` and publishes it with `gh` when gh is logged in as
+`leminhhieu98py` (otherwise it prints the `gh release create` command to run).
+Quick checks: `mac/scripts/build-app.sh` builds an ad-hoc test app;
+`"mac/dist/Bo cố lên.app/Contents/MacOS/BoCoLen" --selftest /tmp/bocolen-selftest` loads every page,
+reports JavaScript errors and saves screenshots (it uses its own storage when
+`BOCOLEN_STORE_DIR` is set).
+
 ## Development
 
 No build step and no dependencies. Logic lives in `lib/` and is unit-tested:
@@ -112,4 +159,6 @@ npm test
 | `review/` | Flashcard review page, recorder, speech, effects |
 | `popup/`, `options/`, `ui/` | Popup, settings page, shared theme and mascot |
 | `apps-script/Code.gs` | Google Sheet backend |
-| `start.sh` | One-command setup / update for macOS |
+| `start.sh` | One-command setup / update for the Chrome extension |
+| `mac/` | Native macOS app (Swift): hosts the same pages, shortcut, screen capture, self-update |
+| `native/` | Web helpers used only by the Mac app (chrome API shim, worker, toast) |
