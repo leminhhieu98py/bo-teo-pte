@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   filterFlashModels, pickDefaultModel, extractJson, buildEnrichBody, parseEnrich,
   buildGradeBody, parseGrade, generate, listModels, GeminiError, buildImageBody, parseImageResult,
+  buildTranscribeBody, gradePronunciation,
 } from '../lib/gemini.js';
 
 const GC = ['generateContent', 'countTokens'];
@@ -149,6 +150,57 @@ test('buildGradeBody sends wav audio inline and mentions stress', () => {
   const prompt = parts.find((p) => p.text).text;
   assert.ok(prompt.includes('banana'));
   assert.ok(/stress/i.test(prompt));
+  assert.match(prompt, /no human voice/i);
+});
+
+function sequenceFetch(answers) {
+  const calls = [];
+  const impl = async (url, init) => {
+    calls.push(JSON.parse(init.body));
+    const text = JSON.stringify(answers[calls.length - 1]);
+    return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text }] } }] }) };
+  };
+  impl.calls = calls;
+  return impl;
+}
+
+test('buildTranscribeBody does not reveal the target word', () => {
+  const body = buildTranscribeBody('QUJD');
+  const prompt = body.contents[0].parts.find((p) => p.text).text;
+  assert.doesNotMatch(prompt, /occasion/);
+  assert.match(prompt, /do not guess/i);
+  assert.equal(body.contents[0].parts.find((p) => p.inlineData).inlineData.data, 'QUJD');
+});
+
+test('gradePronunciation fails fast when the blind transcript is another word', async () => {
+  const fetchImpl = sequenceFetch([{ heard: 'ocean' }]);
+  const g = await gradePronunciation({ apiKey: 'k', model: 'm', word: 'occasion', ipa: '', wavBase64: 'QQ==', fetchImpl });
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal(g.passed, false);
+  assert.equal(g.heard, 'ocean');
+  assert.ok(g.score <= 10);
+  assert.match(g.soundsFeedback, /ocean/);
+});
+
+test('gradePronunciation grades only after the blind transcript matches', async () => {
+  const fetchImpl = sequenceFetch([{ heard: 'Occasion' }, { heard: 'occasion', score: 91, stress_correct: true, tip_vi: 'ok' }]);
+  const g = await gradePronunciation({ apiKey: 'k', model: 'm', word: 'occasion', ipa: '', wavBase64: 'QQ==', fetchImpl });
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.equal(g.passed, true);
+  assert.equal(g.score, 91);
+  assert.equal(g.heard, 'Occasion');
+});
+
+test('parseGrade with a target only passes when what Gemini heard matches the word', () => {
+  const good = { heard: 'Occasion.', score: 92, stress_correct: true };
+  assert.equal(parseGrade(good, 'occasion').passed, true);
+  assert.equal(parseGrade({ ...good, heard: 'ocasion' }, 'occasion').passed, true);
+  assert.equal(parseGrade({ ...good, heard: 'look it up' }, 'look up').passed, false);
+  assert.equal(parseGrade({ ...good, heard: 'I said look up' }, 'look up').passed, true);
+  const nothing = parseGrade({ ...good, heard: '' }, 'occasion');
+  assert.equal(nothing.passed, false);
+  assert.equal(nothing.score, 0);
+  assert.equal(parseGrade({ ...good, heard: 'potato' }, 'occasion').passed, false);
 });
 
 test('parseGrade clamps score and requires correct stress to pass', () => {

@@ -1,5 +1,5 @@
 // Records the learner's voice and returns a 16 kHz mono WAV as base64.
-import { downsample, encodeWav, bytesToBase64 } from '../lib/wav.js';
+import { downsample, encodeWav, bytesToBase64, voicedSeconds } from '../lib/wav.js';
 
 const TARGET_RATE = 16000;
 
@@ -73,6 +73,7 @@ export class Recorder {
         wavBase64: bytesToBase64(encodeWav(samples, TARGET_RATE)),
         peak,
         seconds: samples.length / TARGET_RATE,
+        voiced: voicedSeconds(samples, TARGET_RATE),
       };
     } finally {
       decodeCtx.close();

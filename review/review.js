@@ -26,7 +26,7 @@ import { speak } from './speech.js';
 const $ = (id) => document.getElementById(id);
 const SCREENS = ['screenLoading', 'screenMessage', 'screenCard', 'screenSummary'];
 const MAX_RECORD_MS = 4000;
-const MIN_PEAK = 0.03;
+const MIN_VOICED_SECONDS = 0.25;
 const RING_LENGTH = 326.7;
 
 const app = {
@@ -40,6 +40,7 @@ const app = {
   recorder: null,
   recordTimer: 0,
   busy: false,
+  starting: false,
   muted: false,
 };
 
@@ -368,12 +369,14 @@ function resetMic() {
 }
 
 async function toggleRecord() {
-  if (app.busy || $('micZone').hidden) return;
+  // While the mic is opening, ignore clicks: a second click used to start a second recorder.
+  if (app.busy || app.starting || $('micZone').hidden) return;
   if (app.recorder?.recording) {
     stopRecord();
     return;
   }
   speechSynthesis.cancel();
+  app.starting = true;
   app.recorder = new Recorder({
     onLevel: (level) => { $('micRing').style.transform = `scale(${1 + Math.min(level * 1.6, 0.6)})`; },
   });
@@ -383,6 +386,8 @@ async function toggleRecord() {
     say('I need your microphone to hear you!', 'oops');
     toastLine(micErrorText(err), 'bad');
     return;
+  } finally {
+    app.starting = false;
   }
   $('micBtn').classList.add('recording');
   $('micIcon').innerHTML = ICONS.stop;
@@ -406,9 +411,11 @@ async function stopRecord() {
     toastLine('Recording failed. Please try again.', 'bad');
     return;
   }
-  if (rec.peak < MIN_PEAK || rec.seconds < 0.3) {
+  // Gemini "hears" the target word even in silence, so never send audio without a real voice.
+  if (rec.voiced < MIN_VOICED_SECONDS) {
     app.busy = false;
-    say('I could not hear you. Speak a bit louder and closer!', 'oops');
+    say('I could not hear your voice. Say the whole word clearly into the mic!', 'oops');
+    toastLine('Not counted. Try again and speak a bit louder.', 'info');
     return;
   }
 
