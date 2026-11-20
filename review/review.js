@@ -10,7 +10,8 @@ import { listWords, postReview, saveHistory } from '../lib/sheet.js';
 import { roundSummary, isBetterRound } from '../lib/history.js';
 import { errorEntry, formatDetail } from '../lib/errors.js';
 import { gradePronunciation, GeminiError } from '../lib/gemini.js';
-import { buildDailySet, todayKey, toBool, shuffle } from '../lib/daily.js';
+import { todayKey, toBool } from '../lib/daily.js';
+import { resolveSession, nextRoundSession } from '../lib/session.js';
 import {
   createCardState, applyTyping, shouldAutoHint, applyGrade, canSkip, skipCard, needsReview,
   applyHint, revealAll,
@@ -188,13 +189,7 @@ async function init() {
   app.words = new Map(words.map((w) => [w.id, w]));
 
   const today = todayKey();
-  let session = await getSession();
-  // Rebuild the set on a new day, or when round 1 has not started yet (new words may exist).
-  const fresh = !session || session.date !== today
-    || (Object.keys(session.results || {}).length === 0 && (session.round || 1) <= 1);
-  if (fresh) session = { date: today, ids: buildDailySet(words), results: {}, xp: 0, combo: 0 };
-  session.ids = session.ids.filter((id) => app.words.has(id));
-  session.index = firstUnfinished(session);
+  const { session, fresh } = resolveSession(await getSession(), words, today);
   app.session = session;
   await saveSession(session);
   updateTopbar();
@@ -573,20 +568,7 @@ async function sendHistory(item) {
 
 async function reviewAgain() {
   const prev = app.session;
-  if (prev.date !== todayKey()) {
-    location.reload(); // a new day started: build a fresh set
-    return;
-  }
-  app.session = {
-    date: prev.date,
-    ids: shuffle(prev.ids),
-    results: {},
-    xp: 0,
-    combo: 0,
-    index: 0,
-    round: (prev.round || 1) + 1,
-    best: prev.best,
-  };
+  app.session = nextRoundSession(prev, [...app.words.values()], todayKey());
   await saveSession(app.session);
   updateTopbar();
   showCard();
