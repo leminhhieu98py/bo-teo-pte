@@ -4,8 +4,10 @@ import { downsample, encodeWav, bytesToBase64, voicedSeconds } from '../lib/wav.
 const TARGET_RATE = 16000;
 
 export class Recorder {
-  constructor({ onLevel } = {}) {
+  constructor({ onLevel, onLost } = {}) {
     this.onLevel = onLevel;
+    this.onLost = onLost;
+    this.stopping = false;
     this.stream = null;
     this.mediaRecorder = null;
     this.chunks = [];
@@ -24,6 +26,9 @@ export class Recorder {
     this.chunks = [];
     this.mediaRecorder = new MediaRecorder(this.stream);
     this.mediaRecorder.ondataavailable = (e) => e.data.size && this.chunks.push(e.data);
+    // Stopped without stop() being called: the device went away.
+    this.mediaRecorder.onstop = () => { if (!this.stopping) this.onLost?.(); };
+    this.stream.getTracks().forEach((t) => { t.onended = () => { if (!this.stopping) this.onLost?.(); }; });
     this.mediaRecorder.start();
     this.startMeter();
   }
@@ -55,6 +60,7 @@ export class Recorder {
   // Returns { wavBase64, peak, seconds }.
   async stop() {
     if (!this.mediaRecorder) throw new Error('Not recording');
+    this.stopping = true;
     const stopped = new Promise((resolve) => { this.mediaRecorder.onstop = resolve; });
     this.mediaRecorder.stop();
     await stopped;
@@ -81,6 +87,7 @@ export class Recorder {
   }
 
   cancel() {
+    this.stopping = true;
     try {
       this.mediaRecorder?.stop();
     } catch { /* already stopped */ }

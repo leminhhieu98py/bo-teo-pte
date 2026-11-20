@@ -35,8 +35,16 @@ async function render() {
   $('shortcut').textContent = save?.shortcut || 'not set';
 }
 
-$('start').addEventListener('click', () => {
-  chrome.tabs.create({ url: chrome.runtime.getURL('review/review.html') });
+// Focus the review tab if it is already open; two review tabs would overwrite each other.
+$('start').addEventListener('click', async () => {
+  const url = chrome.runtime.getURL('review/review.html');
+  const [open] = chrome.runtime.getContexts ? await chrome.runtime.getContexts({ contextTypes: ['TAB'], documentUrls: [url] }) : [];
+  if (open && open.tabId >= 0) {
+    await chrome.tabs.update(open.tabId, { active: true });
+    await chrome.windows.update(open.windowId, { focused: true });
+  } else {
+    await chrome.tabs.create({ url });
+  }
   window.close();
 });
 $('settings').addEventListener('click', () => {

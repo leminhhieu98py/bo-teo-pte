@@ -150,6 +150,24 @@ async function flushQueue() {
   await outbox.flush(sendItem);
 }
 
+
+// Remembers what this tab saved, so a change made by another review tab can be noticed.
+function saveSessionHere(session) {
+  // Keep the last few: change events of quick successive saves arrive after the next save.
+  app.ownSessionJson = [...(app.ownSessionJson || []), JSON.stringify(session)].slice(-10);
+  return saveSession(session);
+}
+
+// Two review tabs would overwrite each other's progress: stop this one if another tab saves.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.session || !app.ownSessionJson) return;
+  if (app.ownSessionJson.includes(JSON.stringify(changes.session.newValue))) return;
+  app.ownSessionJson = null;
+  app.recorder?.cancel();
+  showMessage('This review is open in another tab', 'To keep your progress safe, continue in the other tab, or reload this one.',
+    'Reload here', () => location.reload(), 'think');
+});
+
 // ---------- start ----------
 
 function firstUnfinished(session) {
@@ -196,7 +214,7 @@ async function init() {
   const today = todayKey();
   const { session, fresh } = resolveSession(await getSession(), words, today);
   app.session = session;
-  await saveSession(session);
+  await saveSessionHere(session);
   updateTopbar();
 
   if (needsCompletion(session)) {
@@ -247,7 +265,7 @@ function showCard() {
 // Saves the card being answered so a reload cannot reset wrong tries, hints or failed recordings.
 function persistCard() {
   app.session = withCurrentCard(app.session, app.word.id, app.card);
-  saveSession(app.session);
+  saveSessionHere(app.session);
 }
 
 const totalLetters = () => letterCount(app.slots);
@@ -414,6 +432,8 @@ function onAnswer(e) {
 // ---------- speaking phase ----------
 
 function playReference(rate, button) {
+  // The mic would record the computer's own voice and Gemini would pass it.
+  if (app.starting || app.recorder?.recording) return;
   const btn = button || $('speakBtn');
   btn.classList.add('playing');
   speak(app.word.word, { rate, onEnd: () => btn.classList.remove('playing') });
@@ -432,10 +452,17 @@ function goSpeaking() {
   resetMic();
   toastLine('');
   say('Listen to me first, then say it the same way!', 'listen');
-  setTimeout(() => playReference(1), 350);
+  clearTimeout(app.refTimer);
+  app.refTimer = setTimeout(() => playReference(1), 350);
+}
+
+function setListenEnabled(on) {
+  $('speakBtn').disabled = !on;
+  $('slowBtn').disabled = !on;
 }
 
 function resetMic() {
+  setListenEnabled(true);
   $('micBtn').classList.remove('recording');
   $('micIcon').innerHTML = ICONS.mic;
   $('micLabel').textContent = 'Tap the mic (or press Space)';
@@ -451,8 +478,17 @@ async function toggleRecord() {
   }
   speechSynthesis.cancel();
   app.starting = true;
+  clearTimeout(app.refTimer);
+  setListenEnabled(false);
   app.recorder = new Recorder({
     onLevel: (level) => { $('micRing').style.transform = `scale(${1 + Math.min(level * 1.6, 0.6)})`; },
+    onLost: () => {
+      // The mic disappeared (for example AirPods disconnected): reset instead of staying stuck.
+      clearTimeout(app.recordTimer);
+      app.recorder?.cancel();
+      resetMic();
+      say('The microphone stopped. Please try again.', 'oops');
+    },
   });
   try {
     await app.recorder.start();
@@ -608,7 +644,7 @@ async function finishCard() {
   // Queue the Sheet update before saving, so closing the page right now cannot lose it.
   // The rid lets the Sheet ignore the same result if it is sent twice.
   const item = await outbox.add('review', { id, needsReview: needsReview(st), rid: `${s.date}#${s.round || 1}#${id}` });
-  await saveSession(s);
+  await saveSessionHere(s);
   outbox.send(item, sendItem);
 
   floatXp($('xpFloat'), $('xpPill'), `+${xp} XP`);
@@ -640,16 +676,19 @@ async function completeDay(celebrate = true) {
   await saveStreak(app.streak);
   const newBest = isBetterRound(round, s.best);
   if (newBest) s.best = round;
-  await saveSession(s);
+  await saveSessionHere(s);
   outbox.send(item, sendItem);
   updateTopbar();
   showSummary(celebrate, newBest);
 }
 
 async function reviewAgain() {
+  if (app.startingRound) return; // a second click would skip a round number
+  app.startingRound = true;
+  setTimeout(() => { app.startingRound = false; }, 1500);
   const prev = app.session;
   app.session = nextRoundSession(prev, [...app.words.values()], todayKey());
-  await saveSession(app.session);
+  await saveSessionHere(app.session);
   updateTopbar();
   showCard();
   say(`Round ${app.session.round}! Can you beat ${prev.best?.xp ?? 0} XP?`, 'happy');
@@ -692,8 +731,8 @@ $('answerInput').addEventListener('input', () => renderSlots());
 $('answerInput').addEventListener('focus', () => $('slots').classList.add('focused'));
 $('answerInput').addEventListener('blur', () => $('slots').classList.remove('focused'));
 $('slots').addEventListener('click', () => $('answerInput').focus());
-$('speakBtn').addEventListener('click', () => playReference(1, $('speakBtn')));
-$('slowBtn').addEventListener('click', () => playReference(0.6, $('slowBtn')));
+$('speakBtn').addEventListener('click', () => { playReference(1, $('speakBtn')); $('speakBtn').blur(); });
+$('slowBtn').addEventListener('click', () => { playReference(0.6, $('slowBtn')); $('slowBtn').blur(); });
 $('micBtn').addEventListener('click', toggleRecord);
 $('retryBtn').addEventListener('click', retry);
 $('skipBtn').addEventListener('click', () => { app.card = skipCard(app.card); finishCard(); });

@@ -46,3 +46,7 @@ test('pickMessage returns a non-empty string for every kind', () => {
     assert.ok(msg.length > 0, kind);
   }
 });
+
+test('updateStreak never moves back to an older day', () => {
+  assert.deepEqual(updateStreak({ count: 5, lastDate: '2026-11-20' }, '2026-11-19'), { count: 5, lastDate: '2026-11-20' });
+});
