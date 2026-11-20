@@ -11,7 +11,8 @@ final class Updater {
   }
 
   struct Release { let version: String; let zip: URL }
-  private(set) var available: Release?
+  var available: Release?
+  var relaunchAfterInstall = true
   private var timer: Timer?
 
   func start() {
@@ -81,7 +82,7 @@ final class Updater {
         _ = try FileManager.default.replaceItemAt(current, withItemAt: newApp)
         DispatchQueue.main.async {
           completion(nil)
-          Self.relaunch(current)
+          if self.relaunchAfterInstall { Self.relaunch(current) }
         }
       } catch {
         fail("Could not install the update: \(error.localizedDescription). Move Bo cố lên to the Applications folder and try again.")
@@ -89,7 +90,7 @@ final class Updater {
     }.resume()
   }
 
-  private static func signedLikeMe(_ app: URL) -> Bool {
+  static func signedLikeMe(_ app: URL) -> Bool {
     var me: SecCode?
     var myStatic: SecStaticCode?
     var requirement: SecRequirement?

@@ -17,6 +17,23 @@ enum SelfTest {
 
   static func runIfRequested() -> Bool {
     let args = CommandLine.arguments
+    // `--verify-signature <app>`: would the updater accept this app? (signed like the running one)
+    if let i = args.firstIndex(of: "--verify-signature"), i + 1 < args.count {
+      print("SIGNED LIKE ME: \(Updater.signedLikeMe(URL(fileURLWithPath: args[i + 1])))")
+      exit(0)
+    }
+    // `--test-install <zip url>`: run the real install steps against a local zip (no relaunch).
+    if let i = args.firstIndex(of: "--test-install"), i + 1 < args.count, let url = URL(string: args[i + 1]) {
+      Updater.shared.available = Updater.Release(version: "9.9.9", zip: url)
+      Updater.shared.relaunchAfterInstall = false
+      Updater.shared.install { error in
+        let plist = NSDictionary(contentsOf: Bundle.main.bundleURL.appendingPathComponent("Contents/Info.plist"))
+        let installed = plist?["CFBundleShortVersionString"] as? String ?? "?"
+        print("INSTALL RESULT: \(error ?? "ok"); version on disk now: \(installed)")
+        exit(0)
+      }
+      return true
+    }
     guard let index = args.firstIndex(of: "--selftest"), index + 1 < args.count else { return false }
     let out = URL(fileURLWithPath: args[index + 1], isDirectory: true)
     try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
