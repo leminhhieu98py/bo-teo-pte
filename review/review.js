@@ -3,8 +3,7 @@ import { setMood } from '../ui/mascot.js';
 import { ICONS, starSvg } from '../ui/icons.js';
 import {
   getSettings, getReadySettings, missingSettings, SetupError, getSession, saveSession,
-  getStreak, saveStreak, getPrefs, savePrefs, enqueueReviews, takeQueuedReviews, appendErrorLog,
-  enqueueHistory, takeQueuedHistory,
+  getStreak, saveStreak, getPrefs, savePrefs, appendErrorLog, outbox, migrateLegacyQueues,
 } from '../lib/storage.js';
 import { listWords, postReview, saveHistory } from '../lib/sheet.js';
 import { roundSummary, isBetterRound } from '../lib/history.js';
@@ -134,18 +133,21 @@ function micErrorText(err) {
 
 // ---------- sheet sync ----------
 
-async function sendResults(results) {
+// Sends one outbox item to the Sheet. Errors are logged and re-thrown so the item stays queued.
+async function sendItem(item) {
   try {
-    await postReview({ url: app.settings.sheetUrl, token: app.settings.token, results });
-  } catch {
-    await enqueueReviews(results);
+    const { sheetUrl: url, token } = app.settings;
+    if (item.kind === 'review') await postReview({ url, token, results: [item.payload] });
+    else if (item.kind === 'history') await saveHistory({ url, token, ...item.payload });
+  } catch (err) {
+    logError(err, item.kind === 'history' ? 'history' : 'sheet');
+    throw err;
   }
 }
 
 async function flushQueue() {
-  const queued = await takeQueuedReviews();
-  if (queued.length) await sendResults(queued);
-  for (const item of await takeQueuedHistory()) await sendHistory(item);
+  await migrateLegacyQueues();
+  await outbox.flush(sendItem);
 }
 
 // ---------- start ----------
@@ -603,8 +605,11 @@ async function finishCard() {
   s.results[id] = { passed: st.passed, skipped: st.skipped, revealed: st.revealed, score: st.bestScore, xp };
   s.current = null;
   s.index = firstUnfinished(s);
+  // Queue the Sheet update before saving, so closing the page right now cannot lose it.
+  // The rid lets the Sheet ignore the same result if it is sent twice.
+  const item = await outbox.add('review', { id, needsReview: needsReview(st), rid: `${s.date}#${s.round || 1}#${id}` });
   await saveSession(s);
-  sendResults([{ id, needsReview: needsReview(st) }]);
+  outbox.send(item, sendItem);
 
   floatXp($('xpFloat'), $('xpPill'), `+${xp} XP`);
   updateTopbar();
@@ -628,25 +633,17 @@ async function completeDay(celebrate = true) {
   const s = app.session;
   if (s.completed) return;
   s.completed = true; // saved together with the best round, so a reload cannot count it twice
+  const round = { ...roundSummary(s, app.words), key: `${s.date}#${s.round || 1}` };
+  // The History row (best round per day) is queued first; the key makes a repeat harmless.
+  const item = await outbox.add('history', { date: s.date, round });
   app.streak = updateStreak(await getStreak(), s.date);
   await saveStreak(app.streak);
-  const round = roundSummary(s, app.words);
   const newBest = isBetterRound(round, s.best);
   if (newBest) s.best = round;
   await saveSession(s);
-  sendHistory({ date: s.date, round });
+  outbox.send(item, sendItem);
   updateTopbar();
   showSummary(celebrate, newBest);
-}
-
-// Saves the finished round to the Sheet "History" tab (best round per day is kept there).
-async function sendHistory(item) {
-  try {
-    await saveHistory({ url: app.settings.sheetUrl, token: app.settings.token, ...item });
-  } catch (err) {
-    logError(err, 'history');
-    await enqueueHistory(item);
-  }
 }
 
 async function reviewAgain() {
