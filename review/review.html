@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Word Buddy Review</title>
+  <link rel="icon" href="../icons/icon32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../ui/theme.css">
+  <link rel="stylesheet" href="review.css">
+</head>
+<body>
+  <canvas id="confetti"></canvas>
+
+  <header class="topbar">
+    <div class="brand"><img src="../icons/icon48.png" alt=""> Word Buddy</div>
+    <div class="track" aria-label="Progress">
+      <div class="track-fill" id="trackFill"></div>
+      <div class="track-runner" id="trackRunner"><img src="../icons/icon32.png" alt=""></div>
+    </div>
+    <div class="counter" id="counter">0 / 0</div>
+    <div class="pill xp-pill" id="xpPill">0 XP</div>
+    <div class="pill streak-pill" id="streakPill">0 days</div>
+    <button class="btn btn-ghost btn-icon" id="muteBtn" title="Sound on/off" aria-label="Sound on/off"></button>
+  </header>
+
+  <main class="stage">
+    <aside class="buddy">
+      <div class="bubble" id="bubble">Hi! I am Mochi. Let's learn!</div>
+      <div class="mascot big" id="mascot"></div>
+      <div class="combo" id="combo" hidden>Combo x<span id="comboCount">3</span></div>
+    </aside>
+
+    <section class="screens">
+      <!-- Loading -->
+      <div class="screen card center" id="screenLoading">
+        <div class="loader"></div>
+        <h2>Getting your words...</h2>
+      </div>
+
+      <!-- Message screen: setup / empty / error -->
+      <div class="screen card center" id="screenMessage" hidden>
+        <h2 id="msgTitle"></h2>
+        <p class="soft" id="msgText"></p>
+        <button class="btn btn-primary" id="msgAction"></button>
+      </div>
+
+      <!-- Flashcard -->
+      <div class="screen card flashcard" id="screenCard" hidden>
+        <div class="card-head">
+          <span class="pill" id="pos"></span>
+          <span class="pill again-pill" id="againPill" hidden>Practice again</span>
+        </div>
+
+        <div id="typingPart">
+          <div class="meaning" id="meaning"></div>
+          <div class="desc" id="desc"></div>
+          <div class="example">
+            <div class="example-en" id="exampleMasked"></div>
+            <div class="example-vi" id="exampleVi"></div>
+          </div>
+          <div class="hint" id="hint" hidden></div>
+          <form class="answer" id="answerForm" autocomplete="off">
+            <input class="input answer-input" id="answerInput" placeholder="Type the English word" spellcheck="false" autocapitalize="off">
+            <button class="btn btn-primary" type="submit">Check</button>
+          </form>
+          <div class="row-center">
+            <button class="btn btn-ghost small" type="button" id="hintBtn">Show hint</button>
+          </div>
+        </div>
+
+        <div id="speakingPart" hidden>
+          <div class="word-row">
+            <div>
+              <div class="word" id="word"></div>
+              <div class="ipa" id="ipa"></div>
+            </div>
+            <div class="listen">
+              <button class="btn btn-ghost btn-round" id="speakBtn" title="Listen" aria-label="Listen"></button>
+              <button class="btn btn-ghost btn-round slow" id="slowBtn" title="Listen slowly" aria-label="Listen slowly"></button>
+            </div>
+          </div>
+          <div class="example-full" id="exampleFull"></div>
+
+          <div class="mic-zone" id="micZone">
+            <p class="say">Now say it out loud!</p>
+            <button class="mic" id="micBtn" aria-label="Record">
+              <span class="mic-ring" id="micRing"></span>
+              <span class="mic-icon" id="micIcon"></span>
+            </button>
+            <p class="mic-label" id="micLabel">Tap the mic (or press Space)</p>
+          </div>
+
+          <div class="grading" id="grading" hidden>
+            <div class="loader"></div>
+            <p>Mochi is listening carefully...</p>
+          </div>
+
+          <div class="result" id="result" hidden>
+            <div class="result-top">
+              <div class="ring">
+                <svg viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r="52" class="ring-bg"/>
+                  <circle cx="60" cy="60" r="52" class="ring-fg" id="ringFg"/>
+                </svg>
+                <div class="ring-num" id="ringNum">0</div>
+              </div>
+              <div class="result-info">
+                <div class="stars" id="stars"></div>
+                <div class="heard">Mochi heard: <b id="heard"></b></div>
+                <div class="stress" id="stress"></div>
+              </div>
+            </div>
+            <ul class="feedback" id="feedback"></ul>
+            <div class="result-actions">
+              <button class="btn btn-ghost" id="retryBtn">Try again</button>
+              <button class="btn btn-ghost" id="skipBtn" hidden>Skip for today</button>
+              <button class="btn btn-mint" id="nextBtn" hidden>Next word</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="toast-line" id="toastLine"></div>
+      </div>
+
+      <!-- Summary -->
+      <div class="screen card center" id="screenSummary" hidden>
+        <h1 class="big-title" id="summaryTitle">You did it!</h1>
+        <p class="soft">See you tomorrow for more words.</p>
+        <div class="tiles">
+          <div class="tile"><b id="sumCards">0</b><span>cards</span></div>
+          <div class="tile"><b id="sumPassed">0</b><span>passed</span></div>
+          <div class="tile"><b id="sumScore">0</b><span>avg score</span></div>
+          <div class="tile"><b id="sumXp">0</b><span>XP</span></div>
+          <div class="tile hot"><b id="sumStreak">0</b><span>day streak</span></div>
+        </div>
+        <div class="again-list" id="againBox" hidden>
+          <h3>Coming back tomorrow</h3>
+          <div class="chips" id="againList"></div>
+        </div>
+        <button class="btn btn-primary" id="closeBtn">Close</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="xp-float" id="xpFloat"></div>
+  <script type="module" src="review.js"></script>
+</body>
+</html>
