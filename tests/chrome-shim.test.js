@@ -65,3 +65,12 @@ test('exposes boNative for native-only settings', async () => {
   assert.deepEqual(plain(await window.boNative.call('app.info')), { version: '1.0.0' });
   assert.equal(calls[0].action, 'app.info');
 });
+
+test('values are cleaned like chrome.storage does (NaN -> null, undefined dropped)', async () => {
+  const { chrome, calls } = load();
+  await chrome.storage.local.set({ session: { xp: NaN, gone: undefined, when: 'x' } });
+  const sent = calls[0].items.session; // raw object handed to the native bridge
+  assert.equal(sent.xp, null);
+  assert.equal('gone' in sent, false);
+  assert.equal(sent.when, 'x');
+});

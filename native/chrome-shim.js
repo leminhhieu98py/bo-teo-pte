@@ -17,7 +17,8 @@
     storage: {
       local: {
         get: (key) => call('storage.get', { key }),
-        set: (items) => call('storage.set', { items }),
+        // Plain JSON values, like chrome.storage (NaN -> null, undefined dropped, Date -> text).
+        set: (items) => call('storage.set', { items: JSON.parse(JSON.stringify(items)) }),
       },
       onChanged: { addListener: (fn) => listeners.push(fn) },
     },

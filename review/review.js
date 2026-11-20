@@ -19,6 +19,7 @@ import { maskWord } from '../lib/answer.js';
 import { buildSlots, letterCount, sanitizeTyped, composeSlots } from '../lib/slots.js';
 import { letterDiff } from '../lib/diff.js';
 import { cleanWords } from '../lib/words.js';
+import { stableStringify } from '../lib/stable.js';
 import { updateStreak, currentStreak, starsForScore, xpForCard, pickMessage } from '../lib/progress.js';
 import { confetti, playSound, setMuted, floatXp } from './effects.js';
 import { Recorder } from './recorder.js';
@@ -168,14 +169,14 @@ async function flushQueue() {
 // Remembers what this tab saved, so a change made by another review tab can be noticed.
 function saveSessionHere(session) {
   // Keep the last few: change events of quick successive saves arrive after the next save.
-  app.ownSessionJson = [...(app.ownSessionJson || []), JSON.stringify(session)].slice(-10);
+  app.ownSessionJson = [...(app.ownSessionJson || []), stableStringify(session)].slice(-10);
   return saveSession(session);
 }
 
 // Two review tabs would overwrite each other's progress: stop this one if another tab saves.
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes.session || !app.ownSessionJson) return;
-  if (app.ownSessionJson.includes(JSON.stringify(changes.session.newValue))) return;
+  if (app.ownSessionJson.includes(stableStringify(changes.session.newValue))) return; // key order may differ
   app.ownSessionJson = null;
   app.recorder?.cancel();
   showMessage('This review is open in another tab', 'To keep your progress safe, continue in the other tab, or reload this one.',
