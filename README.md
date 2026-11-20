@@ -2,7 +2,7 @@
 
 A private Chrome extension for learning English words.
 
-- **Save:** highlight a word on any web page and press **Control+Shift+S**. Gemini writes the
+- **Save:** highlight a word on any web page and press **Command+B**. Gemini writes the
   Vietnamese meaning, a short explanation, an example and the IPA, and the word is stored in a
   Google Sheet.
 - **Review:** every day, review the 30 newest words + 20 random older words (+ words you

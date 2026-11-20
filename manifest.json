@@ -27,8 +27,8 @@
   "commands": {
     "save-word": {
       "suggested_key": {
-        "default": "Ctrl+Shift+S",
-        "mac": "MacCtrl+Shift+S"
+        "default": "Ctrl+B",
+        "mac": "Command+B"
       },
       "description": "Save the selected word to Bo cố lên"
     }

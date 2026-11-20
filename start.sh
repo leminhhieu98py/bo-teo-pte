@@ -83,6 +83,6 @@ else
 fi
 
 say "All set!"
-info "Save a word : highlight it on any page, then press Control+Shift+S."
+info "Save a word : highlight it on any page, then press Command+B."
 info "Review      : click the Bo cố lên icon, then 'Start review'."
 info "You do not need to run this script every day. Run it again only to get updates."
