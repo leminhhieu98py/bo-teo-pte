@@ -68,14 +68,28 @@ body { min-height: 100vh; overflow-x: hidden; }
 .example-en { font-size: 18px; font-weight: 800; }
 .example-vi { font-size: 15px; font-weight: 700; color: var(--ink-soft); margin-top: 4px; }
 .example:empty, .example-en:empty, .example-vi:empty { display: none; }
-.hint { font-size: 30px; font-weight: 900; letter-spacing: .08em; color: var(--primary); text-align: center; margin-bottom: 14px; animation: pop .4s cubic-bezier(.2, 1.6, .4, 1); }
-.hint.reveal { color: var(--red); letter-spacing: 0; }
-.answer { display: flex; gap: 10px; }
-.answer-input { flex: 1; font-size: 22px; font-weight: 800; text-align: center; padding: 14px; }
-.answer-input.shake { animation: shake .4s; border-color: var(--red); }
-.answer-input.good { border-color: var(--mint); background: var(--mint-soft); }
+/* Letter slots */
+.slots { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 26px; margin: 8px 0 20px; min-height: 60px; cursor: text; }
+.slot-word { display: flex; gap: 8px; }
+.slot {
+  width: 40px; height: 54px; display: grid; place-items: center;
+  font-size: 32px; font-weight: 900; color: var(--ink);
+  border-bottom: 5px solid var(--line); border-radius: 10px 10px 4px 4px;
+  transition: border-color .2s, background .2s;
+}
+.slots.small .slot { width: 30px; height: 44px; font-size: 24px; }
+.slot.typed { border-color: var(--primary); animation: pop .22s cubic-bezier(.2, 1.6, .4, 1); }
+.slot.hint { color: var(--primary); background: #F1ECFF; border-color: var(--primary); animation: pop .35s cubic-bezier(.2, 1.6, .4, 1); }
+.slot.fixed { width: auto; min-width: 12px; border-bottom-color: transparent; color: var(--ink-soft); }
+.slots.focused .slot.cursor { border-color: var(--pink); animation: blink 1s steps(2, start) infinite; }
+@keyframes blink { 50% { border-color: var(--line); } }
+.slots.good .slot { border-color: var(--mint); color: #128C68; background: var(--mint-soft); }
+.slots.reveal .slot.hint { color: var(--red); background: var(--red-soft); border-color: var(--red); }
+.slots.shake { animation: shake .4s; }
+.slots.shake .slot { border-color: var(--red); }
 @keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
-.row-center { display: flex; justify-content: center; margin-top: 12px; }
+.answer { position: relative; display: flex; gap: 10px; justify-content: center; }
+.ghost-input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .btn.small { font-size: 14px; padding: 8px 14px; }
 
 .toast-line { text-align: center; font-weight: 800; min-height: 24px; margin-top: 12px; }

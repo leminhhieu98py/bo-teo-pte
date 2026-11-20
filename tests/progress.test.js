@@ -35,6 +35,7 @@ test('xpForCard rewards first-try passes most', () => {
   assert.equal(xpForCard({ passed: true, skipped: false, typingWrong: 0, pronFails: 0 }), 30);
   assert.equal(xpForCard({ passed: true, skipped: false, typingWrong: 1, pronFails: 0 }), 20);
   assert.equal(xpForCard({ passed: true, skipped: false, typingWrong: 0, pronFails: 2 }), 20);
+  assert.equal(xpForCard({ passed: true, skipped: false, typingWrong: 0, pronFails: 0, hints: 1 }), 20);
   assert.equal(xpForCard({ passed: false, skipped: true, typingWrong: 0, pronFails: 3 }), 5);
 });
 

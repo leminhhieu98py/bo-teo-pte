@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createCardState, applyTyping, shouldAutoHint, applyGrade, canSkip, skipCard, needsReview,
+  applyHint, revealAll,
   PASS_SCORE, MAX_TYPING_TRIES, MAX_PRON_FAILS,
 } from '../lib/card.js';
 
@@ -45,6 +46,26 @@ test('does not mutate the previous state', () => {
   const s = createCardState();
   applyTyping(s, 'x', 'hello');
   assert.equal(s.typingWrong, 0);
+});
+
+test('applyHint reveals one letter at a time and a full hint counts as revealed', () => {
+  let r = applyHint(createCardState(), 3);
+  assert.equal(r.result, 'hint');
+  assert.equal(r.state.hints, 1);
+  assert.equal(r.state.revealed, false);
+  r = applyHint(r.state, 3);
+  r = applyHint(r.state, 3);
+  assert.equal(r.result, 'full');
+  assert.equal(r.state.hints, 3);
+  assert.equal(r.state.revealed, true);
+  assert.equal(needsReview(r.state), true);
+  assert.equal(applyHint(r.state, 3).result, 'none');
+});
+
+test('revealAll fills every hint and marks the card revealed', () => {
+  const s = revealAll({ ...createCardState(), hints: 1 }, 5);
+  assert.equal(s.hints, 5);
+  assert.equal(s.revealed, true);
 });
 
 test('pronunciation pass finishes the card', () => {

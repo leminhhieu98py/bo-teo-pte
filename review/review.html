@@ -60,14 +60,12 @@
             <div class="example-en" id="exampleMasked"></div>
             <div class="example-vi" id="exampleVi"></div>
           </div>
-          <div class="hint" id="hint" hidden></div>
+          <div class="slots" id="slots" aria-label="Answer letters"></div>
           <form class="answer" id="answerForm" autocomplete="off">
-            <input class="input answer-input" id="answerInput" placeholder="Type the English word" spellcheck="false" autocapitalize="off">
+            <input class="ghost-input" id="answerInput" aria-label="Type the English word" spellcheck="false" autocapitalize="off" autocomplete="off">
+            <button class="btn btn-ghost" type="button" id="hintBtn">Show a letter</button>
             <button class="btn btn-primary" type="submit">Check</button>
           </form>
-          <div class="row-center">
-            <button class="btn btn-ghost small" type="button" id="hintBtn">Show hint</button>
-          </div>
         </div>
 
         <div id="speakingPart" hidden>

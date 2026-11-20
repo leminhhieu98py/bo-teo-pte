@@ -10,8 +10,10 @@ import { gradePronunciation, GeminiError } from '../lib/gemini.js';
 import { buildDailySet, todayKey, toBool } from '../lib/daily.js';
 import {
   createCardState, applyTyping, shouldAutoHint, applyGrade, canSkip, skipCard, needsReview,
+  applyHint, revealAll,
 } from '../lib/card.js';
-import { makeHint, maskWord } from '../lib/answer.js';
+import { maskWord } from '../lib/answer.js';
+import { buildSlots, letterCount, sanitizeTyped, composeSlots } from '../lib/slots.js';
 import { updateStreak, currentStreak, starsForScore, xpForCard, pickMessage } from '../lib/progress.js';
 import { confetti, playSound, setMuted, floatXp } from './effects.js';
 import { Recorder } from './recorder.js';
@@ -30,6 +32,7 @@ const app = {
   streak: { count: 0, lastDate: '' },
   card: null,
   word: null,
+  slots: [],
   recorder: null,
   recordTimer: 0,
   busy: false,
@@ -203,10 +206,8 @@ function showCard() {
   $('desc').textContent = w.description_vi || '';
   $('exampleMasked').textContent = maskWord(w.example_en, w.word);
   $('exampleVi').textContent = w.example_vi || '';
-  $('hint').hidden = true;
-  $('hint').className = 'hint';
+  app.slots = buildSlots(w.word);
   $('answerInput').value = '';
-  $('answerInput').className = 'input answer-input';
   $('answerInput').disabled = false;
   $('typingPart').hidden = false;
   $('speakingPart').hidden = true;
@@ -214,28 +215,88 @@ function showCard() {
   toastLine('');
   show('screenCard');
   $('answerInput').focus();
+  renderSlots();
   updateTopbar();
 }
 
-function showHint() {
-  $('hint').textContent = makeHint(app.word.word);
-  $('hint').className = 'hint';
-  $('hint').hidden = false;
-  restartAnimation($('hint'));
+const totalLetters = () => letterCount(app.slots);
+
+// Draws one slot per letter. The hidden input only holds the typed letters (never the hints),
+// so Backspace cannot remove a hinted letter.
+function renderSlots(status = '') {
+  const hints = app.card.hints || 0;
+  const typed = sanitizeTyped($('answerInput').value, totalLetters() - hints);
+  if ($('answerInput').value !== typed) $('answerInput').value = typed;
+  const { cells, cursor } = composeSlots(app.slots, hints, typed);
+
+  const groups = [];
+  let group = document.createElement('span');
+  group.className = 'slot-word';
+  cells.forEach((cell, i) => {
+    if (cell.kind === 'fixed' && cell.ch === ' ') {
+      groups.push(group);
+      group = document.createElement('span');
+      group.className = 'slot-word';
+      return;
+    }
+    const el = document.createElement('span');
+    el.className = `slot ${cell.kind}${i === cursor ? ' cursor' : ''}`;
+    el.textContent = cell.ch;
+    group.append(el);
+  });
+  groups.push(group);
+
+  const focused = document.activeElement === $('answerInput');
+  $('slots').replaceChildren(...groups);
+  $('slots').className = ['slots', totalLetters() > 12 ? 'small' : '', focused ? 'focused' : '', status].filter(Boolean).join(' ');
+  $('hintBtn').disabled = hints >= totalLetters() || app.card.phase !== 'typing';
+}
+
+function finishRevealed() {
+  // Every letter is shown: the word counts as not passed and comes back tomorrow.
+  $('answerInput').value = '';
+  const { answer } = composeSlots(app.slots, totalLetters(), '');
+  app.card = applyTyping(app.card, answer, app.word.word).state;
+  $('answerInput').disabled = true;
+  renderSlots('reveal');
+  say(pickMessage('reveal'), 'think');
+  toastLine('This word will come back tomorrow. Now let us say it!', 'info');
+  setTimeout(goSpeaking, 2000);
+}
+
+function giveHint(auto = false) {
+  if (app.card.phase !== 'typing') return;
+  const { state, result } = applyHint(app.card, totalLetters());
+  if (result === 'none') return;
+  app.card = state;
+  // The hinted letter takes the first typed slot, so a correct prefix stays correct.
+  $('answerInput').value = $('answerInput').value.slice(1);
+  if (result === 'full') {
+    finishRevealed();
+    return;
+  }
+  renderSlots();
+  say(auto ? 'Here is a little help!' : 'Here is one letter. You can do it!', 'think');
+  $('answerInput').focus();
 }
 
 function onAnswer(e) {
   e.preventDefault();
   if (app.card.phase !== 'typing') return;
-  const input = $('answerInput').value;
-  if (!input.trim()) return;
+  const { answer, complete } = composeSlots(app.slots, app.card.hints || 0, $('answerInput').value);
+  if (!complete) {
+    shake($('slots'));
+    toastLine('Fill all the letters first.', 'info');
+    $('answerInput').focus();
+    return;
+  }
 
-  const { state, result } = applyTyping(app.card, input, app.word.word);
+  const { state, result } = applyTyping(app.card, answer, app.word.word);
   app.card = state;
 
   if (result === 'correct') {
-    $('answerInput').classList.add('good');
     $('answerInput').disabled = true;
+    renderSlots('good');
     playSound('correct');
     confetti($('confetti'), { count: 40, originY: 0.45 });
     say(pickMessage('correct'), 'happy');
@@ -244,18 +305,16 @@ function onAnswer(e) {
     return;
   }
 
-  shake($('answerInput'));
-  $('answerInput').select(); // next typing replaces the wrong answer
   playSound('wrong');
   if (result === 'reveal') {
-    $('hint').textContent = app.word.word;
-    $('hint').className = 'hint reveal';
-    $('hint').hidden = false;
-    $('answerInput').value = '';
-    say(pickMessage('reveal'), 'think');
-    toastLine('Type the word above to continue.', 'info');
+    app.card = revealAll(app.card, totalLetters());
+    finishRevealed();
+    shake($('slots'));
     return;
   }
+  $('answerInput').value = ''; // retype; hinted letters stay
+  renderSlots();
+  shake($('slots'));
   if (result === 'almost') {
     say(pickMessage('almost'), 'think');
     toastLine('So close!', 'info');
@@ -263,7 +322,7 @@ function onAnswer(e) {
     say(pickMessage('wrong'), 'oops');
     toastLine('Not quite.', 'bad');
   }
-  if (shouldAutoHint(app.card) && !app.card.revealed) showHint();
+  if (shouldAutoHint(app.card)) giveHint(true);
 }
 
 // ---------- speaking phase ----------
@@ -446,7 +505,7 @@ async function finishCard() {
   const st = app.card;
   const id = app.word.id;
   const xp = xpForCard(st);
-  const firstTry = st.passed && st.typingWrong === 0 && st.pronFails === 0;
+  const firstTry = st.passed && st.typingWrong === 0 && st.pronFails === 0 && !st.hints;
 
   s.combo = firstTry ? (s.combo || 0) + 1 : 0;
   s.xp = (s.xp || 0) + xp;
@@ -514,7 +573,11 @@ function showSummary(celebrate) {
 // ---------- events ----------
 
 $('answerForm').addEventListener('submit', onAnswer);
-$('hintBtn').addEventListener('click', () => { showHint(); $('answerInput').focus(); });
+$('hintBtn').addEventListener('click', () => giveHint(false));
+$('answerInput').addEventListener('input', () => renderSlots());
+$('answerInput').addEventListener('focus', () => $('slots').classList.add('focused'));
+$('answerInput').addEventListener('blur', () => $('slots').classList.remove('focused'));
+$('slots').addEventListener('click', () => $('answerInput').focus());
 $('speakBtn').addEventListener('click', () => playReference(1, $('speakBtn')));
 $('slowBtn').addEventListener('click', () => playReference(0.6, $('slowBtn')));
 $('micBtn').addEventListener('click', toggleRecord);

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalize, isCorrect, levenshtein, isAlmost, makeHint, maskWord } from '../lib/answer.js';
+import { normalize, isCorrect, levenshtein, isAlmost, maskWord } from '../lib/answer.js';
 
 test('normalize lowercases, trims, collapses spaces and unifies apostrophes', () => {
   assert.equal(normalize('  Don’t   Stop. '), "don't stop");
@@ -25,12 +25,6 @@ test('isAlmost is true for close misses on words of length >= 4', () => {
   assert.equal(isAlmost('cat', 'car'), false);
   assert.equal(isAlmost('hello', 'hello'), false);
   assert.equal(isAlmost('xyzzy', 'hello'), false);
-});
-
-test('makeHint shows first letter of each word and underscores', () => {
-  assert.equal(makeHint('hello'), 'h _ _ _ _');
-  assert.equal(makeHint('look up'), 'l _ _ _   u _');
-  assert.equal(makeHint("don't"), "d _ _ ' _");
 });
 
 test('maskWord hides the word and its common suffixes', () => {
