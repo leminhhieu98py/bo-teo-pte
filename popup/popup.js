@@ -58,3 +58,17 @@ $('history').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('history/history.html') });
   window.close();
 });
+
+// Mac app: offer a waiting update right here.
+if (window.boNative) {
+  window.boNative.call('app.info').then((info) => {
+    if (!info.update) return;
+    $('updateBtn').hidden = false;
+    $('updateBtn').textContent = `Update to v${info.update}`;
+    $('updateBtn').addEventListener('click', async () => {
+      $('updateBtn').textContent = 'Updating...';
+      const result = await window.boNative.call('update.install');
+      if (result !== 'ok') $('updateBtn').textContent = 'Update failed. Try in Settings.';
+    });
+  });
+}

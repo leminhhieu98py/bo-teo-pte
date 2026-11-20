@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Bo co len toast</title>
+  <style>
+    html, body { margin: 0; background: transparent; overflow: hidden; }
+    body { display: flex; justify-content: flex-end; padding: 10px 14px; font: 600 15px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .toast { display: flex; gap: 10px; align-items: center; max-width: 360px; color: #2D2250;
+      border-radius: 18px; padding: 12px 16px; border: 2px solid var(--c); background: var(--bg);
+      box-shadow: 0 10px 26px rgba(60, 40, 140, .28); animation: pop .35s cubic-bezier(.2, 1.6, .4, 1); }
+    .toast[hidden] { display: none; }
+    .dot { flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--c); display: grid; place-items: center; color: #fff; font-size: 18px; }
+    .spin { width: 16px; height: 16px; border: 3px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }
+    .detail { margin-top: 4px; font: 500 12px/1.35 ui-monospace, Menlo, monospace; color: #6E6590; word-break: break-word; }
+    .detail:empty { display: none; }
+    @keyframes pop { from { transform: translateY(-12px) scale(.9); opacity: 0; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="toast" id="toast" hidden>
+    <div class="dot" id="dot"></div>
+    <div><div id="msg"></div><div class="detail" id="detail"></div></div>
+  </div>
+  <script>
+    const COLORS = {
+      loading: ['#7C5CFF', '#F1ECFF'],
+      success: ['#14A37F', '#E3FBF3'],
+      info: ['#C98A00', '#FFF6DA'],
+      error: ['#E0466B', '#FFE8EE'],
+    };
+    // Called by the app. Texts are set with textContent only.
+    window.showToast = (message, kind, detail) => {
+      const [c, bg] = COLORS[kind] || COLORS.loading;
+      const toast = document.getElementById('toast');
+      toast.style.setProperty('--c', c);
+      toast.style.setProperty('--bg', bg);
+      const dot = document.getElementById('dot');
+      dot.textContent = kind === 'success' ? '✓' : kind === 'loading' ? '' : '!';
+      if (kind === 'loading') {
+        const spin = document.createElement('div');
+        spin.className = 'spin';
+        dot.append(spin);
+      }
+      document.getElementById('msg').textContent = message;
+      document.getElementById('detail').textContent = detail || '';
+      toast.hidden = false;
+      toast.style.animation = 'none';
+      void toast.offsetWidth;
+      toast.style.animation = '';
+    };
+  </script>
+</body>
+</html>

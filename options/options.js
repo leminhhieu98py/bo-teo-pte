@@ -111,5 +111,94 @@ $('clearLog').addEventListener('click', async () => {
   renderLog();
 });
 
+// ---------- Mac app only (window.boNative comes from native/chrome-shim.js) ----------
+
+const PERMISSIONS = [
+  ['accessibility', 'Accessibility', 'to read the highlighted word'],
+  ['screen', 'Screen Recording', 'to save from a picture'],
+  ['microphone', 'Microphone', 'to say the words'],
+];
+
+async function renderPermissions() {
+  const status = await window.boNative.call('perm.status');
+  $('perms').replaceChildren(...PERMISSIONS.map(([kind, name, why]) => {
+    const li = document.createElement('li');
+    const what = document.createElement('span');
+    what.className = 'what';
+    what.textContent = `${name} - ${why}`;
+    li.append(what);
+    if (status[kind] === 'granted') {
+      const ok = document.createElement('span');
+      ok.className = 'ok';
+      ok.textContent = 'Allowed';
+      li.append(ok);
+    } else {
+      const button = document.createElement('button');
+      button.className = 'btn btn-primary small';
+      button.type = 'button';
+      button.textContent = 'Allow';
+      button.addEventListener('click', () => window.boNative.call('perm.request', { kind }));
+      li.append(button);
+    }
+    return li;
+  }));
+}
+
+async function setUpMacApp() {
+  const call = window.boNative.call;
+  $('macCard').hidden = false;
+  $('shortcutCard').hidden = true;
+  $('subtitle').textContent = 'Ask your brother for the values below, then press Save.';
+
+  const presets = await call('shortcut.list');
+  const current = await call('shortcut.get');
+  $('hotkey').replaceChildren(...presets.map((p) => {
+    const option = document.createElement('option');
+    option.value = p.id;
+    option.textContent = p.label;
+    option.selected = p.label === current;
+    return option;
+  }));
+  $('hotkey').addEventListener('change', async () => {
+    const label = await call('shortcut.set', { id: $('hotkey').value });
+    $('shortcut').textContent = label;
+  });
+
+  const info = await call('app.info');
+  $('version').textContent = `v${info.version}`;
+  $('loginItem').checked = Boolean(info.launchAtLogin);
+  $('loginItem').addEventListener('change', async () => {
+    $('loginItem').checked = await call('login.set', { on: $('loginItem').checked });
+  });
+  const showUpdate = (version) => {
+    $('installUpdate').hidden = !version;
+    $('installUpdate').textContent = `Install v${version}`;
+  };
+  showUpdate(info.update);
+  $('checkUpdate').addEventListener('click', async () => {
+    $('updateStatus').textContent = 'Checking...';
+    $('updateStatus').className = 'status';
+    const result = await call('update.check');
+    const latest = await call('app.info');
+    showUpdate(latest.update);
+    $('updateStatus').textContent = result === 'available' ? `Version ${latest.update} is ready.` : result === 'latest' ? 'You have the newest version.' : result;
+    $('updateStatus').className = `status ${result === 'available' || result === 'latest' ? 'ok' : 'err'}`;
+  });
+  $('installUpdate').addEventListener('click', async () => {
+    $('updateStatus').textContent = 'Installing... the app will restart.';
+    const result = await call('update.install');
+    if (result !== 'ok') {
+      $('updateStatus').textContent = result;
+      $('updateStatus').className = 'status err';
+    }
+  });
+
+  await renderPermissions();
+  // Permissions are granted in System Settings: refresh while this page is open.
+  setInterval(() => { if (!document.hidden) renderPermissions(); }, 2000);
+  if (location.hash === '#shortcut') $('macCard').scrollIntoView({ behavior: 'smooth' });
+}
+
 load();
 renderLog();
+if (window.boNative) setUpMacApp();

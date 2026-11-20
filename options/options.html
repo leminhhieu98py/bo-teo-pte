@@ -16,6 +16,12 @@
     .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     .row .input { flex: 1; min-width: 200px; }
     select.input { appearance: auto; }
+    .perms { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+    .perms li { display: flex; align-items: center; gap: 10px; background: #F8F6FF; border-radius: 14px; padding: 10px 12px; font-weight: 700; }
+    .perms li span.what { flex: 1; }
+    .perms .ok { color: #128C68; font-weight: 900; }
+    .check { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+    .check input { width: 20px; height: 20px; accent-color: var(--primary); }
     .log { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-direction: column; gap: 8px; }
     .log li { background: #F8F6FF; border-radius: 12px; padding: 10px 12px; font: 500 12px/1.45 ui-monospace, Menlo, monospace; word-break: break-word; }
     .log li b { font-family: inherit; color: var(--primary); }
@@ -28,7 +34,7 @@
       <div class="mascot" id="mascot"></div>
       <div>
         <h1>Settings</h1>
-        <p>Usually filled in by start.sh. Change only if something is wrong.</p>
+        <p id="subtitle">Usually filled in by start.sh. Change only if something is wrong.</p>
       </div>
     </div>
 
@@ -61,7 +67,27 @@
       </div>
     </form>
 
-    <div class="card">
+    <div class="card" id="macCard" hidden>
+      <h3>Mac app</h3>
+      <div class="field">
+        <label for="hotkey">Save shortcut</label>
+        <select class="input" id="hotkey"></select>
+        <small>Works in every app. Highlight a word and press it. Nothing highlighted? Press it and drag a box around the word explanation.</small>
+      </div>
+      <div class="field">
+        <label>Permissions</label>
+        <ul class="perms" id="perms"></ul>
+      </div>
+      <label class="check"><input type="checkbox" id="loginItem"> Open Bo cố lên when the Mac starts</label>
+      <div class="row" style="margin-top:14px">
+        <span class="pill" id="version">v-</span>
+        <button class="btn btn-ghost" type="button" id="checkUpdate">Check for updates</button>
+        <button class="btn btn-primary" type="button" id="installUpdate" hidden>Install update</button>
+        <span class="status" id="updateStatus"></span>
+      </div>
+    </div>
+
+    <div class="card" id="shortcutCard">
       <h3>Shortcut</h3>
       <p style="margin-top:0;font-weight:700">Save a word: highlight it, then press <b id="shortcut">...</b>. Nothing highlighted? Press it and drag a box around the word explanation on the page.</p>
       <button class="btn btn-ghost" id="changeShortcut">Change shortcut</button>
