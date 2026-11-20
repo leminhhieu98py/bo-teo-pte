@@ -27,8 +27,8 @@ function fakeFetch(status, body) {
   return impl;
 }
 
-test('filterFlashModels keeps only plain flash models', () => {
-  assert.deepEqual(filterFlashModels(MODELS), ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-3-flash-preview']);
+test('filterFlashModels keeps flash and flash-lite text models', () => {
+  assert.deepEqual(filterFlashModels(MODELS), ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3-flash-preview']);
 });
 
 test('pickDefaultModel prefers the newest stable flash model', () => {
@@ -36,11 +36,12 @@ test('pickDefaultModel prefers the newest stable flash model', () => {
   assert.equal(pickDefaultModel([...MODELS, { name: 'models/gemini-3-flash', supportedGenerationMethods: GC }]), 'gemini-3-flash');
 });
 
-test('pickDefaultModel prefers gemini-3.5-flash when available', () => {
+test('pickDefaultModel prefers gemini-3.1-flash-lite when available', () => {
   const withNewer = [...MODELS,
-    { name: 'models/gemini-3.5-flash', supportedGenerationMethods: GC },
+    { name: 'models/gemini-3.1-flash-lite', supportedGenerationMethods: GC },
+    { name: 'models/gemini-3.5-flash-lite', supportedGenerationMethods: GC },
     { name: 'models/gemini-3.8-flash', supportedGenerationMethods: GC }];
-  assert.equal(pickDefaultModel(withNewer), 'gemini-3.5-flash');
+  assert.equal(pickDefaultModel(withNewer), 'gemini-3.1-flash-lite');
 });
 
 test('request bodies turn thinking off', () => {
@@ -48,20 +49,32 @@ test('request bodies turn thinking off', () => {
   assert.deepEqual(buildGradeBody('a', '', 'QQ==').generationConfig.thinkingConfig, { thinkingBudget: 0 });
 });
 
-test('generate retries without thinkingConfig when the model rejects it', async () => {
+function failThenOk(failures) {
   const calls = [];
-  const fetchImpl = async (url, init) => {
+  const impl = async (url, init) => {
     calls.push(JSON.parse(init.body));
-    if (calls.length === 1) {
-      return { ok: false, status: 400, json: async () => ({ error: { message: 'Thinking budget is not supported for this model.' } }) };
-    }
+    const failure = failures[calls.length - 1];
+    if (failure) return { ok: false, status: failure[0], json: async () => ({ error: { message: failure[1] } }) };
     return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"ok":1}' }] } }] }) };
   };
+  impl.calls = calls;
+  return impl;
+}
+
+test('generate falls back through thinking settings on HTTP 400', async () => {
+  const fetchImpl = failThenOk([[400, 'Request contains an invalid argument.'], [400, 'Thinking level MINIMAL is not supported.']]);
   const body = { generationConfig: { temperature: 0.2, thinkingConfig: { thinkingBudget: 0 } } };
   assert.deepEqual(await generate({ apiKey: 'k', model: 'm', body, fetchImpl }), { ok: 1 });
-  assert.equal(calls.length, 2);
-  assert.equal(calls[1].generationConfig.thinkingConfig, undefined);
-  assert.equal(calls[1].generationConfig.temperature, 0.2);
+  const configs = fetchImpl.calls.map((c) => c.generationConfig.thinkingConfig);
+  assert.deepEqual(configs, [{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, undefined]);
+  assert.equal(fetchImpl.calls[2].generationConfig.temperature, 0.2);
+});
+
+test('generate does not retry other errors such as high demand', async () => {
+  const fetchImpl = failThenOk([[503, 'This model is currently experiencing high demand.']]);
+  const body = { generationConfig: { thinkingConfig: { thinkingBudget: 0 } } };
+  await assert.rejects(generate({ apiKey: 'k', model: 'm', body, fetchImpl }), (e) => e.code === 'other');
+  assert.equal(fetchImpl.calls.length, 1);
 });
 
 test('generate gives up after the timeout with code timeout', async () => {

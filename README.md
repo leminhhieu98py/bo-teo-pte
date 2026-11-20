@@ -58,8 +58,8 @@ URL stays the same.
 
 ### 2. Gemini API key
 
-Create a key at <https://aistudio.google.com/apikey>. Bo cố lên only uses **flash** models
-(cheap, high free quota). It picks the newest stable flash model automatically; you can choose
+Create a key at <https://aistudio.google.com/apikey>. Bo cố lên only uses **flash / flash-lite** models
+(cheap, high free quota). It uses gemini-3.1-flash-lite by default (fast: about 2s per word); you can choose
 another one in Settings.
 
 ### 3. Give the learner the values
