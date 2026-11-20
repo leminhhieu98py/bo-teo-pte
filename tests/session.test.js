@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveSession, nextRoundSession } from '../lib/session.js';
+import { resolveSession, nextRoundSession, restoreCard, withCurrentCard, needsCompletion } from '../lib/session.js';
 
 const words = ['a', 'b', 'c'].map((id, i) => ({ id, word: id, added_at: `2026-11-1${i}`, flagged: false }));
 const rng = () => 0.42;
@@ -65,4 +65,42 @@ test('nextRoundSession starts a new day after midnight', () => {
   const next = nextRoundSession({ date: '2026-11-19', ids: ['a'], results: {}, round: 4 }, words, today, rng);
   assert.equal(next.date, today);
   assert.equal(next.round, 1);
+});
+
+test('restoreCard returns the saved card only for the card being shown', () => {
+  const card = { phase: 'speaking', typingWrong: 2, hints: 1, pronFails: 1, attempts: ['x'] };
+  const session = withCurrentCard({ date: today, ids: ['a', 'b'], results: {}, index: 0 }, 'a', card);
+  assert.deepEqual(session.current, { id: 'a', card });
+  assert.deepEqual(restoreCard(session, 'a'), card);
+  assert.equal(restoreCard(session, 'b'), null);
+  assert.equal(restoreCard({ ids: ['a'], results: {} }, 'a'), null);
+});
+
+test('restoreCard ignores a saved card whose word is already finished', () => {
+  const session = { ids: ['a'], results: { a: { passed: true } }, current: { id: 'a', card: { phase: 'done' } } };
+  assert.equal(restoreCard(session, 'a'), null);
+});
+
+test('withCurrentCard(null) clears the in-progress card', () => {
+  const session = withCurrentCard({ current: { id: 'a', card: {} } }, null, null);
+  assert.equal(session.current, null);
+});
+
+test('resolveSession keeps the in-progress card across reloads', () => {
+  const saved = { date: today, ids: ['a', 'b'], results: {}, round: 1, current: { id: 'a', card: { phase: 'typing', typingWrong: 2 } } };
+  const { session, fresh } = resolveSession(saved, words, today, rng);
+  assert.equal(fresh, false);
+  assert.deepEqual(session.current, saved.current);
+});
+
+test('resolveSession drops an in-progress card on a new day', () => {
+  const saved = { date: '2026-11-19', ids: ['a'], results: {}, round: 1, current: { id: 'a', card: {} } };
+  assert.equal(resolveSession(saved, words, today, rng).session.current, undefined);
+});
+
+test('needsCompletion is true only for a finished round that was not closed', () => {
+  assert.equal(needsCompletion({ ids: ['a'], results: { a: {} }, completed: false }), true);
+  assert.equal(needsCompletion({ ids: ['a'], results: { a: {} }, completed: true }), false);
+  assert.equal(needsCompletion({ ids: ['a', 'b'], results: { a: {} } }), false);
+  assert.equal(needsCompletion({ ids: [], results: {} }), false);
 });

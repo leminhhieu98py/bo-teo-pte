@@ -11,7 +11,7 @@ import { roundSummary, isBetterRound } from '../lib/history.js';
 import { errorEntry, formatDetail } from '../lib/errors.js';
 import { gradePronunciation, GeminiError } from '../lib/gemini.js';
 import { todayKey, toBool } from '../lib/daily.js';
-import { resolveSession, nextRoundSession } from '../lib/session.js';
+import { resolveSession, nextRoundSession, restoreCard, withCurrentCard, needsCompletion } from '../lib/session.js';
 import {
   createCardState, applyTyping, shouldAutoHint, applyGrade, canSkip, skipCard, needsReview,
   applyHint, revealAll,
@@ -196,7 +196,9 @@ async function init() {
   await saveSession(session);
   updateTopbar();
 
-  if (session.index >= session.ids.length) {
+  if (needsCompletion(session)) {
+    await completeDay(false); // closed right after the last card: save streak and history now
+  } else if (session.index >= session.ids.length) {
     showSummary(false);
   } else {
     say(fresh ? `Hi! ${session.ids.length} words today. Let's go!` : "Welcome back! Let's continue.", 'happy');
@@ -210,7 +212,8 @@ function showCard() {
   const s = app.session;
   const w = app.words.get(s.ids[s.index]);
   app.word = w;
-  app.card = createCardState();
+  // After a reload, continue the same card with its wrong tries, hints and failed recordings.
+  app.card = restoreCard(s, w.id) || createCardState();
 
   $('pos').textContent = w.part_of_speech || '';
   $('pos').hidden = !w.part_of_speech;
@@ -233,6 +236,15 @@ function showCard() {
   $('answerInput').focus();
   renderSlots();
   updateTopbar();
+  // A restored card may already be past typing.
+  if (app.card.phase === 'speaking') goSpeaking();
+  else if (app.card.phase === 'done') finishCard();
+}
+
+// Saves the card being answered so a reload cannot reset wrong tries, hints or failed recordings.
+function persistCard() {
+  app.session = withCurrentCard(app.session, app.word.id, app.card);
+  saveSession(app.session);
 }
 
 const totalLetters = () => letterCount(app.slots);
@@ -273,6 +285,7 @@ function finishRevealed() {
   $('answerInput').value = '';
   const { answer } = composeSlots(app.slots, totalLetters(), '');
   app.card = applyTyping(app.card, answer, app.word.word).state;
+  persistCard();
   $('answerInput').disabled = true;
   renderSlots('reveal');
   renderAttempts(app.card.attempts || []);
@@ -337,6 +350,7 @@ function giveHint(auto = false) {
   const { state, result } = applyHint(app.card, totalLetters());
   if (result === 'none') return;
   app.card = state;
+  persistCard();
   // The hinted letter takes the first typed slot, so a correct prefix stays correct.
   $('answerInput').value = $('answerInput').value.slice(1);
   if (result === 'full') {
@@ -361,6 +375,7 @@ function onAnswer(e) {
 
   const { state, result } = applyTyping(app.card, answer, app.word.word);
   app.card = state;
+  persistCard();
 
   if (result === 'correct') {
     $('answerInput').disabled = true;
@@ -520,6 +535,7 @@ function animateScore(score) {
 function showGrade(grade) {
   const { state, result } = applyGrade(app.card, grade);
   app.card = state;
+  persistCard();
 
   $('grading').hidden = true;
   $('result').hidden = false;
@@ -584,6 +600,7 @@ async function finishCard() {
   s.combo = firstTry ? (s.combo || 0) + 1 : 0;
   s.xp = (s.xp || 0) + xp;
   s.results[id] = { passed: st.passed, skipped: st.skipped, revealed: st.revealed, score: st.bestScore, xp };
+  s.current = null;
   s.index = firstUnfinished(s);
   await saveSession(s);
   sendResults([{ id, needsReview: needsReview(st) }]);
@@ -606,17 +623,19 @@ async function finishCard() {
   }
 }
 
-async function completeDay() {
-  app.streak = updateStreak(await getStreak(), todayKey());
-  await saveStreak(app.streak);
+async function completeDay(celebrate = true) {
   const s = app.session;
+  if (s.completed) return;
+  s.completed = true; // saved together with the best round, so a reload cannot count it twice
+  app.streak = updateStreak(await getStreak(), s.date);
+  await saveStreak(app.streak);
   const round = roundSummary(s, app.words);
   const newBest = isBetterRound(round, s.best);
   if (newBest) s.best = round;
   await saveSession(s);
   sendHistory({ date: s.date, round });
   updateTopbar();
-  showSummary(true, newBest);
+  showSummary(celebrate, newBest);
 }
 
 // Saves the finished round to the Sheet "History" tab (best round per day is kept there).
