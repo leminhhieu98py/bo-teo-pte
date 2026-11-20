@@ -1,0 +1,6 @@
+{
+  "sheetUrl": "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec",
+  "token": "same value as TOKEN in apps-script/Code.gs",
+  "apiKey": "your Gemini API key from https://aistudio.google.com/apikey",
+  "model": ""
+}
