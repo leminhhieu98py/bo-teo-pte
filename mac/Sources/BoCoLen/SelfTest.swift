@@ -473,6 +473,7 @@ enum SelfTest {
       let probe = """
         JSON.stringify({ title: document.title, chrome: !!(window.chrome && window.chrome.storage), native: !!window.boNative,
           worker: !!window.boWorker, errors: window.__errors,
+          localStorage: (() => { try { localStorage.setItem('bo-check', '1'); return localStorage.getItem('bo-check') === '1'; } catch (e) { return 'error ' + e.name; } })(),
           text: (document.body && document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 160) })
         """
       view.evaluateJavaScript(probe) { result, error in
