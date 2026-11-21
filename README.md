@@ -17,7 +17,15 @@ A private Chrome extension for learning English words.
   score of the day. The History page (calendar icon in the top-left corner) shows a month calendar of your best
   result each day. History is saved in the Google Sheet tab `History`.
 
-Mochi the cat cheers you on with confetti, stars, combos, XP and a daily streak.
+- **Money ($):** every learner has a wallet (starts at $2,000). A practice round is worth $200,
+  split evenly over its words; a passed word earns its part. You can earn at most $200 a day
+  (practice again keeps earning until then). A hint costs $5 (at most $15 per word); with an empty
+  wallet the hint is paid from what you earn in that practice, so hints never stop you. The History
+  calendar is colored by the money earned that day. The admin can give money by editing the
+  `xp` column of the learner in the Sheet tab `Users`; every change made by the app is listed in
+  the tab `Ledger`.
+
+Mochi the cat cheers you on with confetti, stars, combos, money and a daily streak.
 
 ## For the learner: the Mac app (recommended)
 
