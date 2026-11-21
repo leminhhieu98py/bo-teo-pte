@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   filterFlashModels, pickDefaultModel, extractJson, buildEnrichBody, parseEnrich,
   buildGradeBody, parseGrade, generate, listModels, GeminiError, buildImageBody, parseImageResult,
-  buildTranscribeBody, gradePronunciation,
+  buildTranscribeBody, gradePronunciation, GRADE_TIMEOUT_MS,
 } from '../lib/gemini.js';
 
 const GC = ['generateContent', 'countTokens'];
@@ -256,4 +256,25 @@ test('listModels returns the models array', async () => {
   const out = await listModels({ apiKey: 'k', fetchImpl });
   assert.equal(out.length, MODELS.length);
   assert.equal(fetchImpl.calls[0].init.headers['x-goog-api-key'], 'k');
+});
+
+test('grading has one 15 s budget shared by both Gemini calls', async () => {
+  assert.equal(GRADE_TIMEOUT_MS, 15000);
+  const timeouts = [];
+  // Each call takes 30 ms; record how much time each call was given.
+  const fetchImpl = async (url, init) => {
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(resolve, 30);
+      init.signal.addEventListener('abort', () => { clearTimeout(t); reject(init.signal.reason); });
+    });
+    timeouts.push(JSON.parse(init.body).contents[0].parts[0].text.startsWith('Transcribe') ? 'transcribe' : 'grade');
+    const text = timeouts.length === 1 ? '{"heard":"cat"}' : '{"heard":"cat","score":90,"stress_correct":true}';
+    return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text }] } }] }) };
+  };
+  // Budget 50 ms: the first call (30 ms) fits, the second gets only the ~20 ms left and times out.
+  await assert.rejects(
+    gradePronunciation({ apiKey: 'k', model: 'm', word: 'cat', ipa: '', wavBase64: 'QQ==', fetchImpl, timeoutMs: 50 }),
+    (e) => e instanceof GeminiError && e.code === 'timeout'
+  );
+  assert.deepEqual(timeouts, ['transcribe']);
 });
