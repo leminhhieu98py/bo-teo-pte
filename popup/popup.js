@@ -1,7 +1,7 @@
 import { setMood } from '../ui/mascot.js';
 import { getSession, getStreak, getSettings } from '../lib/storage.js';
 import { todayKey } from '../lib/daily.js';
-import { currentStreak } from '../lib/progress.js';
+import { currentStreak, todayStats, progressLabel } from '../lib/progress.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -11,11 +11,10 @@ async function render() {
 
   $('streak').textContent = currentStreak(streak, today);
 
-  const todays = session && session.date === today ? session : null;
-  const total = todays ? todays.ids.length : 0;
-  const done = todays ? Object.keys(todays.results || {}).length : 0;
-  $('xp').textContent = todays ? todays.xp || 0 : 0;
-  $('progressText').textContent = total ? `${done} / ${total} cards` : 'not started';
+  const stats = todayStats(session, today);
+  const { total, done } = stats;
+  $('xp').textContent = stats.xp;
+  $('progressText').textContent = progressLabel(stats);
   $('progressBar').style.width = total ? `${Math.round((done / total) * 100)}%` : '0%';
 
   if (total && done >= total) {
