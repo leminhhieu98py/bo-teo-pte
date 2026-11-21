@@ -40,16 +40,29 @@ test('resolveSession drops deleted words but keeps the rest', () => {
   assert.equal(session.index, 1);
 });
 
-test('resolveSession rebuilds an unstarted round 1 so new words are included', () => {
-  const { fresh } = resolveSession({ date: today, ids: ['a'], results: {}, round: 1 }, words, today, rng);
-  assert.equal(fresh, true);
+test('resolveSession rebuilds an unstarted round (any round) so new words are included', () => {
+  for (const round of [1, 2, 3]) {
+    const { session, fresh } = resolveSession({ date: today, ids: ['a'], results: {}, round, best: { xp: 9 } }, words, today, rng);
+    assert.equal(fresh, true);
+    assert.deepEqual([...session.ids].sort(), ['a', 'b', 'c']);
+    assert.equal(session.round, round);
+    assert.deepEqual(session.best, { xp: 9 });
+  }
 });
 
-test('nextRoundSession reuses today\'s words in a new round and keeps the best', () => {
+test('fewer than 50 words: every word is used, in a shuffled order', () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({ id: `w${i}`, word: `w${i}`, added_at: `2026-11-${10 + i}`, flagged: false }));
+  const { session } = resolveSession(null, many, today, Math.random);
+  assert.equal(session.ids.length, 12);
+  const orders = new Set(Array.from({ length: 5 }, () => nextRoundSession({ date: today, ids: [], round: 1 }, many, today, Math.random).ids.join()));
+  assert.ok(orders.size > 1, 'order should change between rounds');
+});
+
+test('nextRoundSession takes the latest words (a word saved after round 1 is included) and keeps the best', () => {
   const prev = { date: today, ids: ['a', 'b'], results: { a: {}, b: {} }, xp: 60, round: 1, best: { xp: 60 } };
   const next = nextRoundSession(prev, words, today, rng);
   assert.equal(next.round, 2);
-  assert.deepEqual([...next.ids].sort(), ['a', 'b']);
+  assert.deepEqual([...next.ids].sort(), ['a', 'b', 'c']);
   assert.deepEqual(next.results, {});
   assert.equal(next.xp, 0);
   assert.deepEqual(next.best, { xp: 60 });
