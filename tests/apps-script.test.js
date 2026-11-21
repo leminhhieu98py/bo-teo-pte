@@ -266,3 +266,13 @@ test('a claim pays the tier reward once and refuses tiers not reached', () => {
   // Rewards are not practice earnings.
   assert.equal(post({ action: 'wallet-get', userId: BO, date: D }).earnedToday, 0);
 });
+
+test('an older round sent again after a newer one is not counted twice', () => {
+  const { post } = newLearner();
+  post({ action: 'history-save', userId: BO, date: D, round: round('r1') });
+  post({ action: 'history-save', userId: BO, date: D, round: round('r2', { flawless: false }) });
+  post({ action: 'history-save', userId: BO, date: D, round: round('r1') }); // reply was lost, outbox sends it again
+  const { stats } = post({ action: 'stats', userId: BO, date: D });
+  assert.deepEqual([stats.rounds_no_hint, stats.great_words, stats.flawless_best], [2, 4, 1]);
+  assert.equal(Number(post({ action: 'history-list', userId: BO }).days[0].rounds), 2);
+});

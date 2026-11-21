@@ -27,7 +27,7 @@ import { Recorder } from './recorder.js';
 import { speak } from './speech.js';
 import { mountNav } from '../ui/nav.js';
 import { showNotice } from '../ui/notice.js';
-import { checkAchievements } from '../ui/achievements-check.js';
+import { checkAchievements, celebrate } from '../ui/achievements-check.js';
 
 // Leaving while a card is on screen asks first (the round is saved and resumes later).
 const nav = mountNav({ isBusy: () => !document.getElementById('screenCard').hidden });
@@ -45,6 +45,8 @@ const app = {
   streak: { count: 0, lastDate: '' },
   wallet: null, // { userId, date, xp, earnedToday, owned, pet, theme } - the Sheet is the truth
   pendingAdjust: [], // earn answers that arrived before the session was loaded
+  unlockQueue: [], // achievement popups wait for the summary screen
+  celebrating: false,
   card: null,
   word: null,
   slots: [],
@@ -223,12 +225,22 @@ function walletForDay(date) {
   refreshWallet();
 }
 
-// An achievement paid a reward: the Sheet's new balance plus what is still queued.
-async function rewardWallet(xp) {
-  const today = todayKey();
-  const pending = (await outbox.all()).filter((i) => i.payload?.userId === app.settings.userId);
-  const base = app.wallet || { userId: app.settings.userId, date: today, earnedToday: 0, owned: [], pet: '', theme: '' };
-  await setWallet(withPending({ ...base, xp }, pending, today));
+// Pays achievement tiers the Sheet now counts. The rewards go into the wallet at once; the popups wait
+// for the summary screen so they never take the keyboard while the learner is typing.
+async function claimAchievements() {
+  const result = await checkAchievements(app.settings, { onReward: (xp, reward) => changeWallet(reward) });
+  if (result.won.length) refreshWallet(); // an earn answer that crossed the claim must not hide the reward
+  app.unlockQueue.push(...result.toCelebrate);
+  showQueuedUnlocks();
+}
+
+function showQueuedUnlocks() {
+  if (!app.unlockQueue.length || app.celebrating || $('screenSummary').hidden) return;
+  app.celebrating = true;
+  celebrate(app.settings, app.unlockQueue.splice(0)).finally(() => {
+    app.celebrating = false;
+    showQueuedUnlocks();
+  });
 }
 
 async function changeWallet(delta, earned = 0) {
@@ -336,7 +348,9 @@ async function init() {
   app.settings = settings;
   app.streak = await getStreak();
   await loadCachedWallet();
-  flushQueue().then(() => Promise.all([syncStreak(), refreshWallet()]));
+  // Rounds that reach the Sheet only now (sent late) may unlock achievements too.
+  const lateRounds = (await outbox.all()).some((i) => i.kind === 'history');
+  flushQueue().then(() => Promise.all([syncStreak(), refreshWallet(), lateRounds && claimAchievements()]));
 
   let words;
   try {
@@ -884,7 +898,7 @@ async function completeDay(celebrate = true) {
   if (newBest) s.best = round;
   await saveSessionHere(s);
   // Once the round is in the Sheet, pay and celebrate any achievement it unlocked.
-  outbox.send(item, sendItem).then((sent) => sent && checkAchievements(app.settings, { onReward: rewardWallet }));
+  outbox.send(item, sendItem).then((sent) => sent && claimAchievements());
   updateTopbar();
   showSummary(celebrate, newBest);
 }
@@ -926,6 +940,7 @@ function showSummary(celebrate, newBest = false) {
 
   $('combo').hidden = true;
   show('screenSummary');
+  showQueuedUnlocks();
   say('You are a superstar! See you tomorrow!', 'happy');
   if (celebrate) {
     playSound('fanfare');

@@ -19,7 +19,7 @@ const WORDS = {
 const HISTORY = {
   name: 'History',
   headers: ['date', 'rounds', 'best_xp', 'best_passed', 'total', 'best_avg_score', 'again_words', 'updated_at', 'last_round_key', 'user_id',
-    'xp_earned', 'best_points', 'rounds_no_hint', 'rounds_flawless', 'great_words'],
+    'xp_earned', 'best_points', 'rounds_no_hint', 'rounds_flawless', 'great_words', 'round_keys'],
   key: 'date',
 };
 // One row per learner. The id is made once by the app (name_8chars) and never changes.
@@ -253,7 +253,12 @@ function saveHistory(date, round, userId) {
   // One row per learner and day (rows without a learner belong to older apps).
   const found = data.rows.find((r) => r.obj.date === date && String(r.obj.user_id || '') === (userId || ''));
   // The same round sent twice (a retry) is not counted again.
-  if (found && round.key && String(found.obj.last_round_key) === String(round.key)) return { ok: true, day: found.obj };
+  // Every round key of the day is kept, so a round sent again (lost reply, outbox) is never counted twice,
+  // even after a newer round.
+  const key = String(round.key || '');
+  const seen = found ? String(found.obj.round_keys || '').split(',').filter(Boolean) : [];
+  if (found && key && (String(found.obj.last_round_key) === key || seen.indexOf(key) !== -1)) return { ok: true, day: found.obj };
+  const roundKeys = (key ? seen.concat([key]) : seen).join(',');
 
   const now = new Date().toISOString();
   // New apps send round points (0-200) and keep them in best_points; best_xp stays for older apps.
@@ -274,7 +279,7 @@ function saveHistory(date, round, userId) {
   };
   if (typeof round.flawless === 'boolean' && userId) updateFlawlessRun(userId, round.flawless);
   if (!found) {
-    const day = Object.assign({ date: date, rounds: 1 }, best, counted, { updated_at: now, last_round_key: round.key || '', user_id: userId || '' });
+    const day = Object.assign({ date: date, rounds: 1 }, best, counted, { updated_at: now, last_round_key: key, round_keys: roundKeys, user_id: userId || '' });
     appendObject(data.t, day);
     return { ok: true, day: day };
   }
@@ -283,7 +288,7 @@ function saveHistory(date, round, userId) {
     ? String(old.best_points) === '' || isBetterRound({ xp: round.points, passed: round.passed, avgScore: round.avgScore },
       { xp: old.best_points, passed: old.best_passed, avgScore: old.best_avg_score })
     : isBetterRound(round, { xp: old.best_xp, passed: old.best_passed, avgScore: old.best_avg_score });
-  const values = Object.assign({ rounds: n(old.rounds) + 1 }, keep ? best : {}, counted, { updated_at: now, last_round_key: round.key || '' });
+  const values = Object.assign({ rounds: n(old.rounds) + 1 }, keep ? best : {}, counted, { updated_at: now, last_round_key: key, round_keys: roundKeys });
   writeCells(data.t, found.rowNumber, values);
   return { ok: true, day: Object.assign({}, old, values) };
 }

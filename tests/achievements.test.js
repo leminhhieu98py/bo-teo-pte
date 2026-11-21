@@ -51,7 +51,7 @@ test('roundCounters: no hint, flawless and great words', () => {
     results: {
       a: { passed: true, score: 95, hints: 0 },
       b: { passed: true, score: 80, hints: 0 },
-      c: { passed: true, score: 90 },
+      c: { passed: true, score: 90, hints: 0 },
     },
   };
   assert.deepEqual(roundCounters(s), { noHint: true, flawless: true, great: 2 });
@@ -74,4 +74,25 @@ test('every category has a medal icon and every tier draws', async () => {
   // Every medal has its own gradient ids, so many medals can share one page.
   const ids = [medalSvg(0, 'flame'), medalSvg(0, 'flame')].map((s) => s.match(/id="(md\d+)r"/)[1]);
   assert.notEqual(ids[0], ids[1]);
+});
+
+test('goalText says one or many', async () => {
+  const { goalText } = await import('../lib/achievements.js');
+  const by = (id) => ACHIEVEMENTS.find((a) => a.id === id);
+  assert.equal(goalText(by('sharp'), 1), '1 round without hints');
+  assert.equal(goalText(by('sharp'), 5), '5 rounds without hints');
+  assert.equal(goalText(by('full-charge'), 1), '1 day at $200');
+  assert.equal(goalText(by('hard-working'), 3), '3 days in a row');
+  assert.equal(goalText(by('fashion'), 1), '1 pet or theme');
+  assert.equal(goalText(by('big-earner'), 1000), '$1,000 earned in total');
+  for (const a of ACHIEVEMENTS) assert.ok(a.unitOne, a.id);
+});
+
+test('a round counts as "no hint" only with hint data and at least one passed word', () => {
+  const skipped = { ids: ['a', 'b'], results: { a: { passed: false, skipped: true, hints: 0 }, b: { passed: false, skipped: true, hints: 0 } } };
+  assert.equal(roundCounters(skipped).noHint, false);
+  const old = { ids: ['a'], results: { a: { passed: true, score: 80 } } }; // saved before hints were recorded
+  assert.equal(roundCounters(old).noHint, false);
+  const ok = { ids: ['a', 'b'], results: { a: { passed: true, hints: 0 }, b: { passed: false, skipped: true, hints: 0 } } };
+  assert.deepEqual(roundCounters(ok), { noHint: true, flawless: false, great: 0 });
 });
