@@ -6,8 +6,11 @@ test('XP constants', () => {
   assert.deepEqual([DAY_CAP, ROUND_CAP, HINT_COST, HINT_CAP_PER_CARD, START_XP], [200, 200, 5, 15, 2000]);
 });
 
-test('wordShare splits 200 and gives the remainder to the last word', () => {
-  assert.deepEqual([0, 1, 2].map((i) => wordShare(i, 3)), [66, 66, 68]);
+test('wordShare splits 200 evenly, the first words take the remainder', () => {
+  assert.deepEqual([0, 1, 2].map((i) => wordShare(i, 3)), [67, 67, 66]);
+  // More than 200 words: 200 of them are worth $1, none is worth more.
+  assert.equal([...Array(250).keys()].reduce((s, i) => s + wordShare(i, 250), 0), 200);
+  assert.equal(Math.max(...[...Array(250).keys()].map((i) => wordShare(i, 250))), 1);
   assert.equal([...Array(50).keys()].reduce((s, i) => s + wordShare(i, 50), 0), 200);
   assert.equal(wordShare(0, 1), 200);
   assert.equal(wordShare(0, 0), 0);

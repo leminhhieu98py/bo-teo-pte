@@ -43,6 +43,7 @@ const app = {
   session: null,
   streak: { count: 0, lastDate: '' },
   wallet: null, // { userId, date, xp, earnedToday, owned, pet, theme } - the Sheet is the truth
+  pendingAdjust: [], // earn answers that arrived before the session was loaded
   card: null,
   word: null,
   slots: [],
@@ -158,7 +159,8 @@ async function sendItem(item) {
 
 // ---------- wallet ----------
 
-const roundKey = (s) => `${s.date}#${s.round || 1}`;
+// date#round, plus the round's random nonce so ids never repeat (learner switch, cleared storage).
+const roundKey = (s) => `${s.date}#${s.round || 1}${s.nonce ? `#${s.nonce}` : ''}`;
 
 async function setWallet(wallet) {
   app.wallet = wallet;
@@ -187,19 +189,37 @@ async function refreshWallet() {
   }
 }
 
+// The round showed `shown` for a word; the Sheet credited what the day cap allowed. Fix the round's
+// earned money once per txId (answers can repeat; the session may not be loaded yet at start-up).
+async function adjustRoundEarned(payload, credited) {
+  const s = app.session;
+  if (!s) {
+    app.pendingAdjust.push([payload, credited]);
+    return;
+  }
+  if (payload.roundKey !== roundKey(s) || s.adjusted?.[payload.txId]) return;
+  const diff = credited - (payload.shown ?? payload.amount);
+  s.adjusted = { ...(s.adjusted || {}), [payload.txId]: true };
+  if (diff) s.earned = Math.max(0, (s.earned || 0) + diff);
+  await saveSessionHere(s);
+}
+
 // The Sheet answered an earn/hint: take its balance, plus the writes that are still queued.
 async function walletAnswered(item, answer) {
-  const s = app.session;
-  if (item.kind === 'earn' && s && item.payload.roundKey === roundKey(s) && answer.credited !== item.payload.amount) {
-    s.earned = Math.max(0, (s.earned || 0) + answer.credited - item.payload.amount); // the day cap was reached elsewhere
-    await saveSessionHere(s);
-  }
+  if (item.kind === 'earn') await adjustRoundEarned(item.payload, answer.credited);
   if (!app.wallet || item.payload.userId !== app.settings.userId) return;
   const today = todayKey();
   const rest = (await outbox.all()).filter((i) => i.id !== item.id && i.payload?.userId === app.settings.userId);
   const base = { ...app.wallet, xp: answer.xp };
   if (item.kind === 'earn' && item.payload.date === today) base.earnedToday = answer.earnedToday;
   await setWallet(withPending(base, rest, today));
+}
+
+// A page left open past midnight: the new day starts with nothing earned yet.
+function walletForDay(date) {
+  if (!app.wallet || app.wallet.date === date) return;
+  app.wallet = { ...app.wallet, date, earnedToday: 0 };
+  refreshWallet();
 }
 
 async function changeWallet(delta, earned = 0) {
@@ -218,7 +238,8 @@ function chargeHint() {
   if (!cost) return;
   const s = app.session;
   app.card = { ...app.card, hintPaid: (app.card.hintPaid || 0) + cost };
-  const { fromWallet, toDebt } = payHint({ balance: app.wallet?.xp ?? 0, cost });
+  // Wallet not loaded yet (first start offline, old Code.gs): let the Sheet decide, never claim it is empty.
+  const { fromWallet, toDebt } = app.wallet ? payHint({ balance: app.wallet.xp, cost }) : { fromWallet: cost, toDebt: 0 };
   if (fromWallet) {
     const payload = {
       userId: app.settings.userId, txId: `${roundKey(s)}:${app.word.id}:hint${app.card.hints}`,
@@ -328,6 +349,7 @@ async function init() {
   const { session, fresh } = resolveSession(await getSession(), words, today);
   app.session = session;
   await saveSessionHere(session);
+  for (const [payload, credited] of app.pendingAdjust.splice(0)) await adjustRoundEarned(payload, credited);
   updateTopbar();
 
   if (needsCompletion(session)) {
@@ -791,9 +813,13 @@ async function finishCard() {
   const st = app.card;
   const id = app.word.id;
   const firstTry = st.passed && st.typingWrong === 0 && st.pronFails === 0 && !st.hints;
-  // Each word is worth an even part of $200; hint debt is paid first, then the $200-a-day cap.
-  const share = st.passed ? wordShare(s.ids.indexOf(id), s.ids.length) : 0;
+  // Each word is worth its part of $200 (fixed when the round was built); hint debt is paid first.
+  // The Sheet applies the $200-a-day cap: the full amount is always sent, the cap only shapes what is shown.
+  const price = s.shares?.[id] ?? wordShare(s.ids.indexOf(id), s.ids.length);
+  const share = st.passed ? price : 0;
+  walletForDay(s.date);
   const earnedBefore = app.wallet?.earnedToday ?? 0;
+  const net = share - Math.min(share, s.debt || 0);
   const { amount, debt } = settleEarn({ share, debt: s.debt || 0, earnedToday: earnedBefore });
 
   s.combo = firstTry ? (s.combo || 0) + 1 : 0;
@@ -806,8 +832,8 @@ async function finishCard() {
   // Queue the Sheet updates before saving, so closing the page right now cannot lose them.
   // The rid / txId lets the Sheet ignore the same write if it is sent twice.
   const item = await outbox.add('review', { id, needsReview: needsReview(st), rid: `${roundKey(s)}#${id}`, userId: app.settings.userId });
-  const earn = amount > 0
-    ? await outbox.add('earn', { userId: app.settings.userId, txId: `${roundKey(s)}:${id}:earn`, date: s.date, amount, ref: id, roundKey: roundKey(s) })
+  const earn = net > 0
+    ? await outbox.add('earn', { userId: app.settings.userId, txId: `${roundKey(s)}:${id}:earn`, date: s.date, amount: net, shown: amount, ref: id, roundKey: roundKey(s) })
     : null;
   await saveSessionHere(s);
   outbox.send(item, sendItem);
@@ -840,7 +866,7 @@ async function completeDay(celebrate = true) {
   const s = app.session;
   if (s.completed) return;
   s.completed = true; // saved together with the best round, so a reload cannot count it twice
-  const round = { ...roundSummary(s, app.words), key: `${s.date}#${s.round || 1}` };
+  const round = { ...roundSummary(s, app.words), key: roundKey(s) };
   // The History row (best round per day) is queued first; the key makes a repeat harmless.
   const item = await outbox.add('history', { date: s.date, round, userId: app.settings.userId });
   app.streak = updateStreak(await getStreak(), s.date);
@@ -862,7 +888,8 @@ async function reviewAgain() {
   await saveSessionHere(app.session);
   updateTopbar();
   showCard();
-  say(`Round ${app.session.round}! Can you beat ${formatMoney(prev.best?.points ?? 0)}?`, 'happy');
+  const best = typeof prev.best?.points === 'number' ? formatMoney(prev.best.points) : 'your best';
+  say(`Round ${app.session.round}! Can you beat ${best}?`, 'happy');
 }
 
 function showSummary(celebrate, newBest = false) {

@@ -123,3 +123,9 @@ test('mergeDay with points keeps best_points and leaves best_xp', () => {
   const kept = mergeDay(merged, '2026-11-21', { points: 80, passed: 3, total: 3, avgScore: 99, again: [] }, 'T2');
   assert.deepEqual([kept.best_points, kept.best_passed, kept.rounds], [120, 2, 3]);
 });
+
+test('a day with money earned counts for the streak like a finished round', () => {
+  const rows = [{ date: '2026-11-19', rounds: 1 }, { date: '2026-11-20', rounds: 0, xp_earned: 40 }];
+  assert.equal(streakFromHistory(rows, '2026-11-20').count, 2);
+  assert.equal(streakFromHistory([{ date: '2026-11-20', rounds: 0, xp_earned: 0 }], '2026-11-20').count, 0);
+});

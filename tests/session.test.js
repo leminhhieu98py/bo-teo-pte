@@ -126,3 +126,17 @@ test('every new round starts with no points, no earned XP and no hint debt', () 
   const started = resolveSession({ date: today, ids: ['a', 'b'], results: { a: {} }, round: 1, points: 66, earned: 61, debt: 0, debtNoticeShown: true }, words, today, rng).session;
   assert.deepEqual([started.points, started.earned, started.debtNoticeShown], [66, 61, true]);
 });
+
+test('each round has its own key and fixed word prices', () => {
+  const a = resolveSession(null, words, today, rng).session;
+  const b = nextRoundSession(a, words, today, rng);
+  assert.match(a.nonce, /^[a-z0-9]{6,}$/);
+  assert.notEqual(a.nonce, b.nonce);
+  assert.equal(Object.values(a.shares).reduce((x, y) => x + y, 0), 200);
+  assert.deepEqual(Object.keys(a.shares).sort(), [...a.ids].sort());
+  // A word deleted mid-round does not make the others worth more.
+  const started = { ...a, results: { [a.ids[0]]: {} } };
+  const fewer = resolveSession(started, words.filter((w) => w.id !== a.ids[2]), today, rng).session;
+  assert.deepEqual(fewer.shares, a.shares);
+  assert.equal(fewer.nonce, a.nonce);
+});
