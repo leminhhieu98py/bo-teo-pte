@@ -64,7 +64,7 @@ test('nextRoundSession takes the latest words (a word saved after round 1 is inc
   assert.equal(next.round, 2);
   assert.deepEqual([...next.ids].sort(), ['a', 'b', 'c']);
   assert.deepEqual(next.results, {});
-  assert.equal(next.xp, 0);
+  assert.deepEqual([next.points, next.earned, next.debt, next.debtNoticeShown], [0, 0, 0, false]);
   assert.deepEqual(next.best, { xp: 60 });
 });
 
@@ -116,4 +116,13 @@ test('needsCompletion is true only for a finished round that was not closed', ()
   assert.equal(needsCompletion({ ids: ['a'], results: { a: {} }, completed: true }), false);
   assert.equal(needsCompletion({ ids: ['a', 'b'], results: { a: {} } }), false);
   assert.equal(needsCompletion({ ids: [], results: {} }), false);
+});
+
+test('every new round starts with no points, no earned XP and no hint debt', () => {
+  const fresh = resolveSession(null, words, today, rng).session;
+  assert.deepEqual([fresh.points, fresh.earned, fresh.debt, fresh.debtNoticeShown], [0, 0, 0, false]);
+  const unstarted = resolveSession({ date: today, ids: ['a'], results: {}, round: 2, points: 9, earned: 9, debt: 5, debtNoticeShown: true }, words, today, rng).session;
+  assert.deepEqual([unstarted.points, unstarted.earned, unstarted.debt, unstarted.debtNoticeShown, unstarted.round], [0, 0, 0, false, 2]);
+  const started = resolveSession({ date: today, ids: ['a', 'b'], results: { a: {} }, round: 1, points: 66, earned: 61, debt: 0, debtNoticeShown: true }, words, today, rng).session;
+  assert.deepEqual([started.points, started.earned, started.debtNoticeShown], [66, 61, true]);
 });

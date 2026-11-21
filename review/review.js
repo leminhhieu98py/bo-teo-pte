@@ -3,9 +3,10 @@ import { setMood } from '../ui/mascot.js';
 import { ICONS, starSvg } from '../ui/icons.js';
 import {
   getSettings, getReadySettings, missingSettings, SetupError, getSession, saveSession,
-  getStreak, saveStreak, getPrefs, savePrefs, appendErrorLog, outbox, migrateLegacyQueues,
+  getStreak, saveStreak, getPrefs, savePrefs, appendErrorLog, outbox, migrateLegacyQueues, getWallet, saveWallet,
 } from '../lib/storage.js';
-import { listWords, postReview, saveHistory, listHistory } from '../lib/sheet.js';
+import { listWords, postReview, saveHistory, listHistory, walletGet, walletEarn, walletSpend } from '../lib/sheet.js';
+import { DAY_CAP, wordShare, nextHintCost, payHint, settleEarn, formatMoney, withPending } from '../lib/xp.js';
 import { roundSummary, isBetterRound, streakFromHistory } from '../lib/history.js';
 import { errorEntry, formatDetail } from '../lib/errors.js';
 import { gradePronunciation, GeminiError } from '../lib/gemini.js';
@@ -20,11 +21,12 @@ import { buildSlots, letterCount, sanitizeTyped, composeSlots, typedEdit, caretO
 import { letterDiff } from '../lib/diff.js';
 import { cleanWords } from '../lib/words.js';
 import { stableStringify } from '../lib/stable.js';
-import { updateStreak, currentStreak, starsForScore, xpForCard, pickMessage } from '../lib/progress.js';
+import { updateStreak, currentStreak, starsForScore, pickMessage } from '../lib/progress.js';
 import { confetti, playSound, setMuted, floatXp } from './effects.js';
 import { Recorder } from './recorder.js';
 import { speak } from './speech.js';
 import { mountNav } from '../ui/nav.js';
+import { showNotice } from '../ui/notice.js';
 
 // Leaving while a card is on screen asks first (the round is saved and resumes later).
 const nav = mountNav({ isBusy: () => !document.getElementById('screenCard').hidden });
@@ -40,6 +42,7 @@ const app = {
   words: new Map(),
   session: null,
   streak: { count: 0, lastDate: '' },
+  wallet: null, // { userId, date, xp, earnedToday, owned, pet, theme } - the Sheet is the truth
   card: null,
   word: null,
   slots: [],
@@ -110,7 +113,7 @@ function updateTopbar() {
   $('trackFill').style.width = `${pct}%`;
   $('trackRunner').style.left = `${pct}%`;
   $('counter').textContent = `${done} / ${total}`;
-  $('xpPill').textContent = `${s?.xp || 0} XP`;
+  $('xpPill').textContent = app.wallet ? formatMoney(app.wallet.xp) : '$...';
   const days = currentStreak(app.streak, todayKey());
   $('streakPill').textContent = `${days} day${days === 1 ? '' : 's'}`;
 }
@@ -145,9 +148,98 @@ async function sendItem(item) {
     const { sheetUrl: url, token } = app.settings;
     if (item.kind === 'review') await postReview({ url, token, userId: item.payload.userId, results: [item.payload] });
     else if (item.kind === 'history') await saveHistory({ url, token, ...item.payload });
+    else if (item.kind === 'earn') await walletAnswered(item, await walletEarn({ url, token, ...item.payload }));
+    else if (item.kind === 'hint') await walletAnswered(item, await walletSpend({ url, token, ...item.payload }));
   } catch (err) {
-    logError(err, item.kind === 'history' ? 'history' : 'sheet');
+    logError(err, item.kind === 'history' ? 'history' : item.kind === 'earn' || item.kind === 'hint' ? 'wallet' : 'sheet');
     throw err;
+  }
+}
+
+// ---------- wallet ----------
+
+const roundKey = (s) => `${s.date}#${s.round || 1}`;
+
+async function setWallet(wallet) {
+  app.wallet = wallet;
+  if (wallet) await saveWallet(wallet);
+  updateTopbar();
+}
+
+// The cached wallet first (instant), today's numbers only when it is from today.
+async function loadCachedWallet() {
+  const cached = await getWallet();
+  const today = todayKey();
+  if (!cached || cached.userId !== app.settings.userId) return;
+  app.wallet = cached.date === today ? cached : { ...cached, date: today, earnedToday: 0 };
+  updateTopbar();
+}
+
+// The Sheet's wallet plus what is still waiting in the outbox.
+async function refreshWallet() {
+  const today = todayKey();
+  try {
+    const server = await walletGet({ url: app.settings.sheetUrl, token: app.settings.token, userId: app.settings.userId, date: today });
+    const pending = (await outbox.all()).filter((i) => i.payload?.userId === app.settings.userId);
+    await setWallet(withPending({ userId: app.settings.userId, date: today, ...server }, pending, today));
+  } catch (err) {
+    logError(err, 'wallet'); // offline: keep the cached wallet
+  }
+}
+
+// The Sheet answered an earn/hint: take its balance, plus the writes that are still queued.
+async function walletAnswered(item, answer) {
+  const s = app.session;
+  if (item.kind === 'earn' && s && item.payload.roundKey === roundKey(s) && answer.credited !== item.payload.amount) {
+    s.earned = Math.max(0, (s.earned || 0) + answer.credited - item.payload.amount); // the day cap was reached elsewhere
+    await saveSessionHere(s);
+  }
+  if (!app.wallet || item.payload.userId !== app.settings.userId) return;
+  const today = todayKey();
+  const rest = (await outbox.all()).filter((i) => i.id !== item.id && i.payload?.userId === app.settings.userId);
+  const base = { ...app.wallet, xp: answer.xp };
+  if (item.kind === 'earn' && item.payload.date === today) base.earnedToday = answer.earnedToday;
+  await setWallet(withPending(base, rest, today));
+}
+
+async function changeWallet(delta, earned = 0) {
+  if (!app.wallet) return;
+  await setWallet({ ...app.wallet, xp: Math.max(0, app.wallet.xp + delta), earnedToday: app.wallet.earnedToday + earned });
+}
+
+function floatMoney(text, anchor, minus = false) {
+  $('xpFloat').classList.toggle('minus', minus);
+  floatXp($('xpFloat'), anchor, text);
+}
+
+// A hint costs $5 (at most $15 per card). An empty wallet never blocks it: the round pays later.
+function chargeHint() {
+  const cost = nextHintCost(app.card.hintPaid || 0);
+  if (!cost) return;
+  const s = app.session;
+  app.card = { ...app.card, hintPaid: (app.card.hintPaid || 0) + cost };
+  const { fromWallet, toDebt } = payHint({ balance: app.wallet?.xp ?? 0, cost });
+  if (fromWallet) {
+    const payload = {
+      userId: app.settings.userId, txId: `${roundKey(s)}:${app.word.id}:hint${app.card.hints}`,
+      date: s.date, amount: fromWallet, kind: 'hint', ref: app.word.id,
+    };
+    outbox.add('hint', payload).then((item) => outbox.send(item, sendItem));
+    changeWallet(-fromWallet);
+    floatMoney(`-${formatMoney(cost)}`, $('xpPill'), true);
+    shake($('xpPill'));
+    return;
+  }
+  s.debt = (s.debt || 0) + toDebt;
+  floatMoney(`-${formatMoney(cost)}`, $('counter'), true);
+  if (!s.debtNoticeShown) {
+    s.debtNoticeShown = true;
+    showNotice({
+      title: 'Your wallet is empty',
+      text: `This hint is paid from the money you earn in this practice. Practice more to earn money, or ask the admin.`,
+      mood: 'oops',
+      button: 'Got it',
+    }).then(() => $('answerInput').focus());
   }
 }
 
@@ -213,7 +305,8 @@ async function init() {
   }
   app.settings = settings;
   app.streak = await getStreak();
-  flushQueue().then(syncStreak);
+  await loadCachedWallet();
+  flushQueue().then(() => Promise.all([syncStreak(), refreshWallet()]));
 
   let words;
   try {
@@ -432,6 +525,7 @@ function giveHint(auto = false) {
   const { state, result } = applyHint(app.card, totalLetters());
   if (result === 'none') return;
   app.card = state;
+  chargeHint();
   persistCard();
   // The hinted letter takes the first typed slot, so a correct prefix stays correct.
   const caret = inputCaret();
@@ -696,21 +790,35 @@ async function finishCard() {
   const s = app.session;
   const st = app.card;
   const id = app.word.id;
-  const xp = xpForCard(st);
   const firstTry = st.passed && st.typingWrong === 0 && st.pronFails === 0 && !st.hints;
+  // Each word is worth an even part of $200; hint debt is paid first, then the $200-a-day cap.
+  const share = st.passed ? wordShare(s.ids.indexOf(id), s.ids.length) : 0;
+  const earnedBefore = app.wallet?.earnedToday ?? 0;
+  const { amount, debt } = settleEarn({ share, debt: s.debt || 0, earnedToday: earnedBefore });
 
   s.combo = firstTry ? (s.combo || 0) + 1 : 0;
-  s.xp = (s.xp || 0) + xp;
-  s.results[id] = { passed: st.passed, skipped: st.skipped, revealed: st.revealed, score: st.bestScore, xp };
+  s.points = (s.points || 0) + share;
+  s.debt = debt;
+  s.earned = (s.earned || 0) + amount;
+  s.results[id] = { passed: st.passed, skipped: st.skipped, revealed: st.revealed, score: st.bestScore, points: share, earned: amount };
   s.current = null;
   s.index = firstUnfinished(s);
-  // Queue the Sheet update before saving, so closing the page right now cannot lose it.
-  // The rid lets the Sheet ignore the same result if it is sent twice.
-  const item = await outbox.add('review', { id, needsReview: needsReview(st), rid: `${s.date}#${s.round || 1}#${id}`, userId: app.settings.userId });
+  // Queue the Sheet updates before saving, so closing the page right now cannot lose them.
+  // The rid / txId lets the Sheet ignore the same write if it is sent twice.
+  const item = await outbox.add('review', { id, needsReview: needsReview(st), rid: `${roundKey(s)}#${id}`, userId: app.settings.userId });
+  const earn = amount > 0
+    ? await outbox.add('earn', { userId: app.settings.userId, txId: `${roundKey(s)}:${id}:earn`, date: s.date, amount, ref: id, roundKey: roundKey(s) })
+    : null;
   await saveSessionHere(s);
   outbox.send(item, sendItem);
+  if (earn) outbox.send(earn, sendItem);
 
-  floatXp($('xpFloat'), $('xpPill'), `+${xp} XP`);
+  if (amount > 0) {
+    await changeWallet(amount, amount);
+    floatMoney(`+${formatMoney(amount)}`, $('xpPill'));
+  } else if (share > 0 && earnedBefore >= DAY_CAP) {
+    toastLine(`You already earned ${formatMoney(DAY_CAP)} today. Amazing!`, 'info');
+  }
   updateTopbar();
 
   if (s.index >= s.ids.length) {
@@ -754,7 +862,7 @@ async function reviewAgain() {
   await saveSessionHere(app.session);
   updateTopbar();
   showCard();
-  say(`Round ${app.session.round}! Can you beat ${prev.best?.xp ?? 0} XP?`, 'happy');
+  say(`Round ${app.session.round}! Can you beat ${formatMoney(prev.best?.points ?? 0)}?`, 'happy');
 }
 
 function showSummary(celebrate, newBest = false) {
@@ -762,11 +870,13 @@ function showSummary(celebrate, newBest = false) {
   const round = roundSummary(s, app.words);
 
   $('summaryTitle').textContent = newBest && (s.round || 1) > 1 ? 'New best today!' : pickMessage('done');
-  $('roundInfo').textContent = `Round ${s.round || 1} · Best today: ${s.best?.xp ?? round.xp} XP · Want to beat it?`;
+  const earnedToday = app.wallet?.earnedToday ?? s.earned ?? 0;
+  $('roundInfo').textContent = `Round ${s.round || 1} · Best today: ${formatMoney(s.best?.points ?? round.points)} · `
+    + `Earned today: ${formatMoney(earnedToday)} / ${formatMoney(DAY_CAP)}`;
   $('sumCards').textContent = round.total;
   $('sumPassed').textContent = round.passed;
   $('sumScore').textContent = round.avgScore;
-  $('sumXp').textContent = round.xp;
+  $('sumXp').textContent = formatMoney(s.earned || 0);
   $('sumStreak').textContent = currentStreak(app.streak, todayKey());
 
   const again = round.again;
