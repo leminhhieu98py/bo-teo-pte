@@ -2,7 +2,7 @@ import AppKit
 import WebKit
 
 /// Creates the web views (all share the bocolen:// scheme, the chrome shim and the bridge) and
-/// manages the page windows: review, history and settings each open at most once.
+/// manages the one page window: Practice, History and Settings load inside it.
 final class Web: NSObject, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate {
   static let shared = Web()
 
@@ -14,6 +14,8 @@ final class Web: NSObject, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate 
   private var nextId = 1
   var handler: ((String, [String: Any], Int, @escaping (Any?) -> Void) -> Void)?
   var onWindowOpened: (() -> Void)?
+  /// Extra scripts for every new web view (self-tests mock the network with it).
+  var extraScripts: [WKUserScript] = []
 
   override init() {
     webRoot = Bundle.main.resourceURL!.appendingPathComponent("web", isDirectory: true)
@@ -30,6 +32,7 @@ final class Web: NSObject, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate 
     config.mediaTypesRequiringUserActionForPlayback = []
     let content = config.userContentController
     content.addUserScript(WKUserScript(source: shimSource, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    extraScripts.forEach(content.addUserScript)
     content.addScriptMessageHandler(Bridge(viewId: viewId, web: self), contentWorld: .page, name: "bocolen")
     let view = WKWebView(frame: .zero, configuration: config)
     view.uiDelegate = self
@@ -50,32 +53,37 @@ final class Web: NSObject, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate 
 
   // MARK: page windows
 
-  private static let sizes: [String: NSSize] = [
-    "review/review.html": NSSize(width: 1100, height: 780),
-    "history/history.html": NSSize(width: 820, height: 900),
-    "options/options.html": NSSize(width: 720, height: 900),
-  ]
+  private static let windowSize = NSSize(width: 1180, height: 820)
+  private static let frameName = "BoCoLenMain"
 
-  /// Opens (or focuses) the window for a bocolen:// URL. Returns its id.
+  /// Shows a bocolen:// URL in the page window (made on first use). Another page replaces the current
+  /// one only after the page agrees: Practice asks "Leave practice?" while a card is on screen.
   @discardableResult
   func open(_ url: URL) -> Int {
     let page = Self.page(of: url)
-    if let id = windowId(forPage: page) {
-      if url.fragment != nil { views[id]?.load(URLRequest(url: url)) }
+    if let id = windows.keys.sorted().first, let view = views[id] {
       focus(id)
       onWindowOpened?() // closes the menu bar popover in this case too
+      if view.url.map(Self.page) == page && url.fragment == nil { return id }
+      let ask = "return window.__boConfirmLeave ? await window.__boConfirmLeave() : true"
+      view.callAsyncJavaScript(ask, arguments: [:], in: nil, in: .page) { result in
+        // Only a clear "stay" keeps the page; a page that cannot answer never blocks navigation.
+        if case .success(let answer) = result, (answer as? Bool) == false { return }
+        view.load(URLRequest(url: url))
+      }
       return id
     }
     let (id, view) = makeWebView()
-    let size = Self.sizes[page] ?? NSSize(width: 900, height: 800)
-    let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+    let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.windowSize),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
     window.title = "Bo cố lên"
     window.isReleasedWhenClosed = false
     window.contentView = view
     window.delegate = self
-    window.center()
+    window.minSize = NSSize(width: 760, height: 600)
+    if !window.setFrameUsingName(Self.frameName) { window.center() }
+    window.setFrameAutosaveName(Self.frameName)
     windows[id] = window
     view.load(URLRequest(url: url))
     focus(id)
@@ -89,10 +97,6 @@ final class Web: NSObject, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate 
 
   static func page(of url: URL) -> String {
     url.path.hasPrefix("/") ? String(url.path.dropFirst()) : url.path
-  }
-
-  private func windowId(forPage page: String) -> Int? {
-    windows.first { id, _ in views[id].flatMap { $0.url }.map(Self.page) == page }?.key
   }
 
   /// chrome.runtime.getContexts: open windows showing one of the URLs.
