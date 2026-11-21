@@ -25,6 +25,11 @@ A private Chrome extension for learning English words.
   `xp` column of the learner in the Sheet tab `Users`; every change made by the app is listed in
   the tab `Ledger`.
 
+- **Achievements:** the medal icon in the top-left corner shows 8 kinds of achievements (Hard-working,
+  Sharp, Flawless, Fashion, Word hunter, Golden voice, Full charge, Big earner). Each has several medals
+  (Bronze $50, Silver $100, Gold $200, Platinum $400, Diamond $800); the money is paid once when you reach
+  it. Unlocked medals are in the Sheet tab `Achievements`.
+
 Mochi the cat cheers you on with confetti, stars, combos, money and a daily streak.
 
 ## For the learner: the Mac app (recommended)
