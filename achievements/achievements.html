@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bo cố lên Achievements</title>
+  <link rel="icon" href="../icons/icon32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../ui/theme.css">
+  <link rel="stylesheet" href="achievements.css">
+</head>
+<body>
+  <main>
+    <div class="head">
+      <div class="mascot" id="mascot"></div>
+      <div>
+        <h1>My achievements</h1>
+        <p id="subtitle">Every medal pays a reward. Collect them all!</p>
+      </div>
+    </div>
+
+    <div class="tiles">
+      <div class="tile"><b id="medalCount">0</b><span>medals</span></div>
+      <div class="tile"><b id="medalTotal">0</b><span>to collect</span></div>
+      <div class="tile"><b id="wallet">$...</b><span>wallet</span></div>
+    </div>
+
+    <section class="list" id="list" aria-busy="true">
+      <div class="loading" id="loading">
+        <div class="loader"></div>
+        <p>Mochi is polishing your medals...</p>
+      </div>
+    </section>
+    <p class="status err" id="status"></p>
+  </main>
+  <script type="module" src="achievements.js"></script>
+</body>
+</html>
