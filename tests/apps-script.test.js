@@ -119,3 +119,90 @@ test('requests without a learner keep the old behaviour', () => {
   post({ action: 'add', userId: 'bo_abcd1234', word: { word: 'cat' } });
   assert.equal(post({ action: 'list' }).words.length, 1);
 });
+
+// ---------- XP wallet ----------
+
+const objects = (sheet) => {
+  const [head, ...rows] = sheet.rows;
+  return rows.map((r) => Object.fromEntries(head.map((h, i) => [h, r[i]])));
+};
+const BO = 'bo_abcd1234';
+const D = '2026-11-21';
+const newLearner = () => {
+  const gs = loadCodeGs();
+  gs.post({ action: 'users-create', id: BO, name: 'Bo' });
+  return gs;
+};
+
+test('new learner starts with 2000 XP and one grant row', () => {
+  const { post, sheets } = newLearner();
+  const w = post({ action: 'wallet-get', userId: BO, date: D });
+  assert.equal(w.ok, true);
+  assert.equal(w.xp, 2000);
+  assert.equal(w.earnedToday, 0);
+  assert.deepEqual(w.owned, []);
+  const ledger = objects(sheets.Ledger);
+  assert.equal(ledger.length, 1);
+  assert.equal(ledger[0].kind, 'grant');
+  assert.equal(Number(ledger[0].amount), 2000);
+});
+
+test('older learner with an empty xp cell is granted 2000 once', () => {
+  const users = makeSheet([['id', 'name', 'created_at', 'updated_at'], [BO, 'Bo', '', '']]);
+  const { post, sheets } = loadCodeGs({ Users: users });
+  assert.equal(post({ action: 'wallet-get', userId: BO, date: D }).xp, 2000);
+  assert.equal(post({ action: 'wallet-get', userId: BO, date: D }).xp, 2000);
+  assert.equal(objects(sheets.Ledger).filter((r) => r.kind === 'grant').length, 1);
+  assert.equal(post({ action: 'wallet-get', userId: 'zz_abcd1234', date: D }).ok, false);
+});
+
+test('earn is credited once per tx id', () => {
+  const { post, sheets } = newLearner();
+  const a = post({ action: 'wallet-earn', userId: BO, txId: 't1', date: D, amount: 50, ref: 'w1' });
+  const b = post({ action: 'wallet-earn', userId: BO, txId: 't1', date: D, amount: 50, ref: 'w1' });
+  assert.deepEqual([a.credited, a.xp, a.earnedToday], [50, 2050, 50]);
+  assert.deepEqual([b.credited, b.xp, b.earnedToday], [50, 2050, 50]);
+  assert.equal(objects(sheets.Ledger).filter((r) => r.kind === 'earn').length, 1);
+  const day = objects(sheets.History).find((r) => r.date === D && r.user_id === BO);
+  assert.equal(Number(day.xp_earned), 50);
+  assert.equal(Number(day.rounds), 0);
+});
+
+test('earn stops at 200 a day and a new day starts a new cap', () => {
+  const { post } = newLearner();
+  post({ action: 'wallet-earn', userId: BO, txId: 't1', date: D, amount: 150 });
+  const capped = post({ action: 'wallet-earn', userId: BO, txId: 't2', date: D, amount: 100 });
+  assert.deepEqual([capped.credited, capped.earnedToday, capped.xp], [50, 200, 2200]);
+  const none = post({ action: 'wallet-earn', userId: BO, txId: 't3', date: D, amount: 10 });
+  assert.deepEqual([none.credited, none.xp], [0, 2200]);
+  const next = post({ action: 'wallet-earn', userId: BO, txId: 't4', date: '2026-11-22', amount: 100 });
+  assert.deepEqual([next.credited, next.earnedToday, next.xp], [100, 100, 2300]);
+  assert.equal(post({ action: 'wallet-get', userId: BO, date: D }).earnedToday, 200);
+});
+
+test('spend refuses when the wallet is short and counts each tx once', () => {
+  const { post, sheets } = newLearner();
+  const once = post({ action: 'wallet-spend', userId: BO, txId: 'h1', date: D, amount: 5, kind: 'hint', ref: 'w1' });
+  const twice = post({ action: 'wallet-spend', userId: BO, txId: 'h1', date: D, amount: 5, kind: 'hint', ref: 'w1' });
+  assert.deepEqual([once.ok, once.xp, twice.ok, twice.xp], [true, 1995, true, 1995]);
+  const users = sheets.Users;
+  const xpCol = users.rows[0].indexOf('xp');
+  users.rows[1][xpCol] = 3; // the admin edits the wallet in the Sheet
+  const short = post({ action: 'wallet-spend', userId: BO, txId: 'h2', date: D, amount: 5, kind: 'hint' });
+  assert.deepEqual([short.ok, short.error, short.xp], [false, 'not_enough_xp', 3]);
+  assert.equal(objects(sheets.Ledger).filter((r) => r.kind === 'hint').length, 1);
+  // Hints never count toward the day's earnings.
+  assert.equal(post({ action: 'wallet-get', userId: BO, date: D }).earnedToday, 0);
+});
+
+test('history with points keeps the best points and leaves best_xp alone', () => {
+  const { post, sheets } = newLearner();
+  post({ action: 'history-save', userId: BO, date: D, round: { key: 'old', xp: 300, passed: 3, total: 3, avgScore: 90, again: [] } });
+  post({ action: 'wallet-earn', userId: BO, txId: 't1', date: D, amount: 40 });
+  post({ action: 'history-save', userId: BO, date: D, round: { key: 'r2', points: 120, xp: 120, passed: 2, total: 3, avgScore: 80, again: [] } });
+  post({ action: 'history-save', userId: BO, date: D, round: { key: 'r3', points: 80, xp: 80, passed: 3, total: 3, avgScore: 99, again: [] } });
+  const day = objects(sheets.History).filter((r) => r.date === D && r.user_id === BO);
+  assert.equal(day.length, 1);
+  assert.deepEqual([Number(day[0].best_points), Number(day[0].best_xp), Number(day[0].rounds), Number(day[0].xp_earned)], [120, 300, 3, 40]);
+  assert.equal(Number(day[0].best_passed), 2);
+});

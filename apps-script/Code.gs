@@ -18,15 +18,24 @@ const WORDS = {
 };
 const HISTORY = {
   name: 'History',
-  headers: ['date', 'rounds', 'best_xp', 'best_passed', 'total', 'best_avg_score', 'again_words', 'updated_at', 'last_round_key', 'user_id'],
+  headers: ['date', 'rounds', 'best_xp', 'best_passed', 'total', 'best_avg_score', 'again_words', 'updated_at', 'last_round_key', 'user_id',
+    'xp_earned', 'best_points'],
   key: 'date',
 };
 // One row per learner. The id is made once by the app (name_8chars) and never changes.
 const USERS = {
   name: 'Users',
-  headers: ['id', 'name', 'created_at', 'updated_at'],
+  headers: ['id', 'name', 'created_at', 'updated_at', 'xp', 'owned', 'pet', 'theme'],
   key: 'id',
 };
+// Every XP change made by the app (the admin may also edit Users.xp by hand). tx_id makes retries harmless.
+const LEDGER = {
+  name: 'Ledger',
+  headers: ['tx_id', 'user_id', 'date', 'kind', 'amount', 'balance_after', 'ref', 'created_at'],
+  key: 'tx_id',
+};
+const DAY_CAP = 200; // XP a learner can earn from practice in one day (mirrors lib/xp.js)
+const START_XP = 2000; // a new learner's wallet
 const LEARNER_ID = /^[a-z0-9-]{1,20}_[a-z0-9]{8}$/;
 
 function doPost(e) {
@@ -45,6 +54,9 @@ function doPost(e) {
     if (body.action === 'users-list') return reply({ ok: true, users: readObjects(USERS) });
     if (body.action === 'users-create') return reply(withLock(() => createUser(String(body.id || ''), String(body.name || ''))));
     if (body.action === 'users-rename') return reply(withLock(() => renameUser(String(body.id || ''), String(body.name || ''))));
+    if (body.action === 'wallet-get') return reply(withLock(() => walletGet(userId, String(body.date || ''))));
+    if (body.action === 'wallet-earn') return reply(withLock(() => walletEarn(userId, body)));
+    if (body.action === 'wallet-spend') return reply(withLock(() => walletSpend(userId, body)));
     return reply({ ok: false, error: 'Unknown action' });
   } catch (err) {
     return reply({ ok: false, error: String(err && err.message ? err.message : err) });
@@ -223,20 +235,26 @@ function saveHistory(date, round, userId) {
   if (found && round.key && String(found.obj.last_round_key) === String(round.key)) return { ok: true, day: found.obj };
 
   const now = new Date().toISOString();
+  // New apps send round points (0-200) and keep them in best_points; best_xp stays for older apps.
+  const usePoints = typeof round.points === 'number';
   const best = {
-    best_xp: n(round.xp),
     best_passed: n(round.passed),
     total: n(round.total),
     best_avg_score: n(round.avgScore),
     again_words: (round.again || []).join(', '),
   };
+  if (usePoints) best.best_points = n(round.points);
+  else best.best_xp = n(round.xp);
   if (!found) {
     const day = Object.assign({ date: date, rounds: 1 }, best, { updated_at: now, last_round_key: round.key || '', user_id: userId || '' });
     appendObject(data.t, day);
     return { ok: true, day: day };
   }
   const old = found.obj;
-  const keep = isBetterRound(round, { xp: old.best_xp, passed: old.best_passed, avgScore: old.best_avg_score });
+  const keep = usePoints
+    ? String(old.best_points) === '' || isBetterRound({ xp: round.points, passed: round.passed, avgScore: round.avgScore },
+      { xp: old.best_points, passed: old.best_passed, avgScore: old.best_avg_score })
+    : isBetterRound(round, { xp: old.best_xp, passed: old.best_passed, avgScore: old.best_avg_score });
   const values = Object.assign({ rounds: n(old.rounds) + 1 }, keep ? best : {}, { updated_at: now, last_round_key: round.key || '' });
   writeCells(data.t, found.rowNumber, values);
   return { ok: true, day: Object.assign({}, old, values) };
@@ -259,8 +277,9 @@ function createUser(id, name) {
   if (existing) return { ok: true, user: existing.obj, claimed: 0 };
 
   const now = new Date().toISOString();
-  const user = { id: id, name: clean, created_at: now, updated_at: now };
+  const user = { id: id, name: clean, created_at: now, updated_at: now, xp: START_XP, owned: '', pet: '', theme: '' };
   appendObject(users.t, user);
+  addLedger({ tx_id: 'grant:' + id, user_id: id, date: todayText(), kind: 'grant', amount: START_XP, balance_after: START_XP, ref: '' });
   let claimed = 0;
   if (users.rows.length === 0) {
     [WORDS, HISTORY].forEach((table) => {
@@ -284,4 +303,107 @@ function renameUser(id, name) {
   const values = { name: clean, updated_at: new Date().toISOString() };
   writeCells(users.t, row.rowNumber, values);
   return { ok: true, user: Object.assign({}, row.obj, values) };
+}
+
+// ---------- XP wallet ----------
+
+function todayText() {
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function findUser(userId) {
+  const users = readRows(USERS);
+  const row = users.rows.find((r) => r.obj.id === userId);
+  return row ? { t: users.t, rowNumber: row.rowNumber, obj: row.obj } : null;
+}
+
+function ledgerFind(txId) {
+  return readRows(LEDGER).rows.find((r) => String(r.obj.tx_id) === txId) || null;
+}
+
+function addLedger(entry) {
+  const t = getTable(LEDGER);
+  appendObject(t, Object.assign({ created_at: new Date().toISOString() }, entry));
+}
+
+// Learners made before the wallet existed have an empty xp cell: they get the starting XP once.
+function walletBalance(user) {
+  const raw = user.obj.xp;
+  if (raw !== '' && raw !== null && raw !== undefined) return Number(raw) || 0;
+  const granted = ledgerFind('grant:' + user.obj.id);
+  const xp = granted ? 0 : START_XP;
+  writeCells(user.t, user.rowNumber, { xp: xp });
+  user.obj.xp = xp;
+  if (!granted) {
+    addLedger({ tx_id: 'grant:' + user.obj.id, user_id: user.obj.id, date: todayText(), kind: 'grant', amount: START_XP, balance_after: START_XP, ref: '' });
+  }
+  return xp;
+}
+
+// The learner's History row of that day; created (rounds 0) when `create` and missing.
+function dayRow(userId, date, create) {
+  const data = readRows(HISTORY);
+  const found = data.rows.find((r) => r.obj.date === date && String(r.obj.user_id || '') === userId);
+  if (found) return { t: data.t, rowNumber: found.rowNumber, obj: found.obj };
+  if (!create) return null;
+  const obj = { date: date, rounds: 0, user_id: userId, xp_earned: 0, updated_at: new Date().toISOString() };
+  appendObject(data.t, obj);
+  return { t: data.t, rowNumber: data.t.sheet.getLastRow(), obj: obj };
+}
+
+function walletRequest(userId, body) {
+  const user = userId ? findUser(userId) : null;
+  if (!user) return { error: { ok: false, error: 'Learner not found' } };
+  const date = String(body.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: { ok: false, error: 'Bad date' } };
+  const txId = String(body.txId || '');
+  if (body.needsTx && !txId) return { error: { ok: false, error: 'Missing txId' } };
+  return { user: user, date: date, txId: txId };
+}
+
+function walletGet(userId, date) {
+  const req = walletRequest(userId, { date: date });
+  if (req.error) return req.error;
+  const xp = walletBalance(req.user);
+  const day = dayRow(userId, date, false);
+  const owned = String(req.user.obj.owned || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return {
+    ok: true,
+    xp: xp,
+    earnedToday: day ? Number(day.obj.xp_earned) || 0 : 0,
+    owned: owned,
+    pet: String(req.user.obj.pet || ''),
+    theme: String(req.user.obj.theme || ''),
+  };
+}
+
+// XP from practice. The day cap is applied here, so two windows or retries cannot pass 200 a day.
+function walletEarn(userId, body) {
+  const req = walletRequest(userId, Object.assign({}, body, { needsTx: true }));
+  if (req.error) return req.error;
+  let xp = walletBalance(req.user);
+  const day = dayRow(userId, req.date, true);
+  const earned = Number(day.obj.xp_earned) || 0;
+  const done = ledgerFind(req.txId);
+  if (done) return { ok: true, credited: Number(done.obj.amount) || 0, xp: xp, earnedToday: earned };
+  const credited = Math.max(0, Math.min(Math.floor(Number(body.amount) || 0), DAY_CAP - earned));
+  xp += credited;
+  writeCells(req.user.t, req.user.rowNumber, { xp: xp });
+  writeCells(day.t, day.rowNumber, { xp_earned: earned + credited, updated_at: new Date().toISOString() });
+  addLedger({ tx_id: req.txId, user_id: userId, date: req.date, kind: 'earn', amount: credited, balance_after: xp, ref: String(body.ref || '') });
+  return { ok: true, credited: credited, xp: xp, earnedToday: earned + credited };
+}
+
+// Hints (and later the shop). The wallet never goes below 0.
+function walletSpend(userId, body) {
+  const req = walletRequest(userId, Object.assign({}, body, { needsTx: true }));
+  if (req.error) return req.error;
+  let xp = walletBalance(req.user);
+  if (ledgerFind(req.txId)) return { ok: true, xp: xp };
+  const amount = Math.max(0, Math.floor(Number(body.amount) || 0));
+  if (xp < amount) return { ok: false, error: 'not_enough_xp', xp: xp };
+  xp -= amount;
+  writeCells(req.user.t, req.user.rowNumber, { xp: xp });
+  addLedger({ tx_id: req.txId, user_id: userId, date: req.date, kind: String(body.kind || 'hint'), amount: -amount, balance_after: xp, ref: String(body.ref || '') });
+  return { ok: true, xp: xp };
 }
