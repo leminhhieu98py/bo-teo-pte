@@ -43,6 +43,11 @@ enum SelfTest {
       }
       return true
     }
+    if let i = args.firstIndex(of: "--selftest-learner"), i + 1 < args.count {
+      installTestHandler()
+      learnerScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
+      return true
+    }
     if let i = args.firstIndex(of: "--selftest-review"), i + 1 < args.count {
       installTestHandler()
       reviewScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
@@ -69,6 +74,72 @@ enum SelfTest {
       case "app.info": reply(["version": Updater.currentVersion, "update": "", "launchAtLogin": false])
       case "perm.status": reply(Permissions.status())
       default: reply(true)
+      }
+    }
+  }
+
+  // MARK: learner scenario (Settings > Learner with a mocked Sheet)
+
+  private static func learnerScenario(_ out: URL) {
+    try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+    Store.shared.set(["settings": ["sheetUrl": "https://script.google.com/macros/s/test/exec", "token": "t", "apiKey": "k", "model": "m"]])
+    let (_, view) = Web.shared.makeWebView()
+    view.configuration.userContentController.addUserScript(WKUserScript(source: """
+      (() => {
+        const users = [{ id: 'bo_k3x9q2mf', name: 'Bo' }];
+        window.__calls = [];
+        const json = (o) => new Response(JSON.stringify(o), { status: 200 });
+        const real = window.fetch.bind(window);
+        window.fetch = async (url, init) => {
+          if (!String(url).includes('script.google.com')) return real(url, init);
+          const b = JSON.parse(init.body);
+          window.__calls.push(b.action + (b.id ? ':' + b.id : '') + (b.name ? ':' + b.name : ''));
+          if (b.action === 'users-list') return json({ ok: true, users });
+          if (b.action === 'users-create') { const u = { id: b.id, name: b.name }; users.push(u); return json({ ok: true, user: u, claimed: 0 }); }
+          if (b.action === 'users-rename') { const u = users.find((x) => x.id === b.id); u.name = b.name; return json({ ok: true, user: u }); }
+          return json({ ok: true, words: [] });
+        };
+      })();
+      """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    let window = NSWindow(contentRect: NSRect(x: -4000, y: 0, width: 720, height: 1700), styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = view
+    window.orderFrontRegardless()
+    windows.append(window)
+    view.load(URLRequest(url: WebRoot.url("options/options.html")))
+    let steps = """
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const $ = (id) => document.getElementById(id);
+      const settings = async () => (await window.chrome.storage.local.get('settings')).settings;
+      const out = { options: [...$('learnerSelect').options].map((o) => o.text) };
+      $('learnerSelect').value = ''; $('learnerSelect').dispatchEvent(new Event('change'));
+      $('learnerName').value = 'Bé Ánh';
+      $('learnerSave').click(); await sleep(1500);
+      const s1 = await settings();
+      out.afterCreate = { status: $('learnerStatus').textContent, userId: s1.userId, userName: s1.userName, idText: $('learnerIdText').textContent };
+      $('learnerSelect').value = 'bo_k3x9q2mf'; $('learnerSelect').dispatchEvent(new Event('change'));
+      $('learnerName').value = 'Bo Bo';
+      $('learnerSave').click(); await sleep(1500);
+      const s2 = await settings();
+      out.afterSwitchRename = { status: $('learnerStatus').textContent, userId: s2.userId, userName: s2.userName };
+      out.calls = window.__calls;
+      return JSON.stringify(out);
+      """
+    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+      view.callAsyncJavaScript(steps, arguments: [:], in: nil, in: .page) { result in
+        switch result {
+        case .success(let value): print("LEARNER \(value as? String ?? "?")")
+        case .failure(let error): print("LEARNER error \(error)")
+        }
+        view.evaluateJavaScript("document.getElementById('learnerCard').scrollIntoView()") { _, _ in
+          view.takeSnapshot(with: nil) { image, _ in
+            if let tiff = image?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+               let png = rep.representation(using: .png, properties: [:]) {
+              try? png.write(to: out.appendingPathComponent("learner.png"))
+            }
+            print("SELFTEST LEARNER DONE")
+            exit(0)
+          }
+        }
       }
     }
   }
@@ -103,7 +174,8 @@ enum SelfTest {
   private static func reviewScenario(_ out: URL) {
     try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
     Store.shared.set([
-      "settings": ["sheetUrl": "https://script.google.com/macros/s/test/exec", "token": "t", "apiKey": "k", "model": "gemini-3.1-flash-lite"],
+      "settings": ["sheetUrl": "https://script.google.com/macros/s/test/exec", "token": "t", "apiKey": "k", "model": "gemini-3.1-flash-lite",
+                   "userId": "bo_k3x9q2mf", "userName": "Bo"],
       "session": NSNull(),
     ])
     let (_, view) = Web.shared.makeWebView()
