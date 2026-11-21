@@ -2,7 +2,8 @@ import { setMood } from '../ui/mascot.js';
 import { getSettings, saveSettings, getErrorLog, clearErrorLog } from '../lib/storage.js';
 import { errorEntry, formatDetail } from '../lib/errors.js';
 import { listModels, filterFlashModels, pickDefaultModel } from '../lib/gemini.js';
-import { listWords } from '../lib/sheet.js';
+import { listWords, listUsers, createUser, renameUser } from '../lib/sheet.js';
+import { makeLearnerId } from '../lib/learner.js';
 
 const $ = (id) => document.getElementById(id);
 const FIELDS = ['sheetUrl', 'token', 'apiKey'];
@@ -37,6 +38,79 @@ $('form').addEventListener('submit', async (e) => {
   const values = Object.fromEntries(FIELDS.map((f) => [f, $(f).value.trim()]));
   await saveSettings({ ...values, model: $('model').value });
   status('Saved!', 'ok');
+  loadLearners(); // the learner list comes from the Sheet just saved
+});
+
+// ---------- Learner (one learner per Mac, all learners share the Sheet) ----------
+
+let learners = [];
+
+function learnerStatus(text, kind = '') {
+  $('learnerStatus').textContent = text;
+  $('learnerStatus').className = `status ${kind}`;
+}
+
+function showLearnerId(id) {
+  $('learnerIdText').textContent = id ? `Learner id: ${id} (it never changes, even if you rename)` : 'A learner id is made from the first name you save.';
+}
+
+async function loadLearners() {
+  const settings = await getSettings();
+  const ready = settings.sheetUrl && settings.token;
+  ['learnerSelect', 'learnerName', 'learnerSave'].forEach((id) => { $(id).disabled = !ready; });
+  if (!ready) {
+    learnerStatus('Save the Google Sheet connection above first.', '');
+    return;
+  }
+  learnerStatus('Loading learners...');
+  try {
+    learners = await listUsers({ url: settings.sheetUrl, token: settings.token });
+    learnerStatus('');
+  } catch (err) {
+    learnerStatus(formatDetail(errorEntry(err, { where: 'sheet' })), 'err');
+    learners = [];
+  }
+  const options = [new Option('+ New learner', '')];
+  learners.forEach((u) => options.push(new Option(u.name, u.id)));
+  $('learnerSelect').replaceChildren(...options);
+  const mine = learners.find((u) => u.id === settings.userId);
+  $('learnerSelect').value = mine ? mine.id : '';
+  $('learnerName').value = mine ? mine.name : settings.userName || '';
+  showLearnerId(mine ? mine.id : '');
+}
+
+$('learnerSelect').addEventListener('change', () => {
+  const picked = learners.find((u) => u.id === $('learnerSelect').value);
+  $('learnerName').value = picked ? picked.name : '';
+  showLearnerId(picked ? picked.id : '');
+  if (!picked) $('learnerName').focus();
+});
+
+$('learnerSave').addEventListener('click', async () => {
+  const settings = await getSettings();
+  const name = $('learnerName').value.replace(/\s+/g, ' ').trim();
+  const pickedId = $('learnerSelect').value;
+  if (!name) return learnerStatus('Type a name first.', 'err');
+  const conn = { url: settings.sheetUrl, token: settings.token };
+  let message = '';
+  try {
+    if (!pickedId) {
+      // New learner: the id is made once from this first name.
+      const result = await createUser({ ...conn, id: makeLearnerId(name), name });
+      await saveSettings({ userId: result.id, userName: result.name });
+      message = `Hi ${result.name}! You are all set.`;
+    } else {
+      const picked = learners.find((u) => u.id === pickedId);
+      if (picked && picked.name !== name) await renameUser({ ...conn, id: pickedId, name });
+      await saveSettings({ userId: pickedId, userName: name });
+      message = pickedId === settings.userId ? 'Saved!' : `Now learning as ${name}.`;
+    }
+    await loadLearners(); // refresh the list first, then show the message
+    learnerStatus(message, 'ok');
+    setMood($('mascot'), 'happy');
+  } catch (err) {
+    learnerStatus(formatDetail(errorEntry(err, { where: 'sheet' })), 'err');
+  }
 });
 
 $('loadModels').addEventListener('click', async () => {
@@ -58,7 +132,8 @@ $('loadModels').addEventListener('click', async () => {
 $('testSheet').addEventListener('click', async () => {
   status('Talking to Google Sheet...');
   try {
-    const words = await listWords({ url: $('sheetUrl').value.trim(), token: $('token').value.trim() });
+    const current = await getSettings();
+    const words = await listWords({ url: $('sheetUrl').value.trim(), token: $('token').value.trim(), userId: current.userId });
     status(`Connected! ${words.length} words in the sheet.`, 'ok');
   } catch (err) {
     status(formatDetail(errorEntry(err, { where: 'sheet' })), 'err');
@@ -202,5 +277,6 @@ async function setUpMacApp() {
 }
 
 load();
+loadLearners();
 renderLog();
 if (window.boNative) setUpMacApp();
