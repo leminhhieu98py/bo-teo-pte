@@ -51,7 +51,7 @@ function askLeave() {
           <button type="button" class="btn btn-primary" data-answer="stay">Keep practicing</button>
         </div>
       </div>`;
-    setMood(overlay.querySelector('.leave-mascot'), 'think');
+    setMood(overlay.querySelector('.leave-mascot'), 'bye');
     const finish = (answer) => {
       document.removeEventListener('keydown', onKey, true);
       overlay.remove();

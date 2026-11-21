@@ -1,6 +1,7 @@
-// Applies the learner's equipped theme (from the cached wallet) and follows later changes,
+// Applies the learner's equipped theme and pet (from the cached wallet) and follows later changes,
 // for example a theme equipped in the Shop while another page is open.
-import { THEMES } from '../lib/shop.js';
+import { THEMES, PETS } from '../lib/shop.js';
+import { setPet } from './mascot.js';
 
 export function applyTheme(id) {
   const theme = THEMES.some((t) => t.id === id) ? id : 'lavender';
@@ -17,12 +18,17 @@ async function current() {
   // One key per call: the Mac app's storage bridge reads a single key.
   const { wallet } = await chrome.storage.local.get('wallet');
   const { settings } = await chrome.storage.local.get('settings');
-  return wallet && settings && wallet.userId === settings.userId ? wallet.theme : '';
+  return wallet && settings && wallet.userId === settings.userId ? wallet : {};
+}
+
+function apply(wallet) {
+  applyTheme(wallet.theme);
+  setPet(PETS.some((p) => p.id === wallet.pet) ? wallet.pet : 'mochi');
 }
 
 export async function syncTheme() {
-  applyTheme(await current());
+  apply(await current());
   chrome.storage.onChanged?.addListener((changes, area) => {
-    if (area === 'local' && (changes.wallet || changes.settings)) current().then(applyTheme);
+    if (area === 'local' && (changes.wallet || changes.settings)) current().then(apply);
   });
 }

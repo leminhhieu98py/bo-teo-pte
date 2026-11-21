@@ -279,7 +279,7 @@ function chargeHint() {
     showNotice({
       title: 'Your wallet is empty',
       text: `This hint is paid from the money you earn in this practice. Practice more to earn money, or ask the admin.`,
-      mood: 'oops',
+      mood: 'sad',
       button: 'Got it',
     }).then(() => $('answerInput').focus());
   }
