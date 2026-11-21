@@ -206,3 +206,63 @@ test('history with points keeps the best points and leaves best_xp alone', () =>
   assert.deepEqual([Number(day[0].best_points), Number(day[0].best_xp), Number(day[0].rounds), Number(day[0].xp_earned)], [120, 300, 3, 40]);
   assert.equal(Number(day[0].best_passed), 2);
 });
+
+// ---------- achievements ----------
+
+import { readFileSync } from 'node:fs';
+import { ACHIEVEMENTS, TIERS } from '../lib/achievements.js';
+
+const round = (key, extra = {}) => ({ key, points: 100, xp: 100, passed: 2, total: 2, avgScore: 90, again: [], noHint: true, flawless: true, great: 2, ...extra });
+
+test('Code.gs uses the same achievement thresholds and rewards as the app', () => {
+  const src = readFileSync(new URL('../apps-script/Code.gs', import.meta.url), 'utf8');
+  const catalog = JSON.parse(src.match(/const ACHIEVEMENT_CATALOG = (\{[\s\S]*?\});/)[1]);
+  const rewards = JSON.parse(src.match(/const TIER_REWARDS = (\[[^\]]*\]);/)[1]);
+  assert.deepEqual(rewards, TIERS.map((t) => t.reward));
+  assert.deepEqual(catalog, Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, { measure: a.measure, thresholds: a.thresholds }])));
+});
+
+test('stats start at zero for a new learner', () => {
+  const { post } = newLearner();
+  const out = post({ action: 'stats', userId: BO, date: D });
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.stats, { streak_best: 0, rounds_no_hint: 0, flawless_best: 0, owned: 0, words: 0, great_words: 0, full_days: 0, earned_total: 0 });
+  assert.deepEqual(out.claimed, []);
+  assert.equal(out.xp, 2000);
+});
+
+test('stats count rounds, runs, streaks, words and money; repeats count once', () => {
+  const { post, sheets } = newLearner();
+  post({ action: 'add', userId: BO, word: { word: 'cat' } });
+  post({ action: 'add', userId: BO, word: { word: 'dog' } });
+  post({ action: 'add', word: { word: 'legacy' } }); // no learner: not counted
+  post({ action: 'history-save', userId: BO, date: '2026-11-19', round: round('a') });
+  post({ action: 'history-save', userId: BO, date: '2026-11-20', round: round('b') });
+  post({ action: 'history-save', userId: BO, date: '2026-11-20', round: round('b') }); // retry
+  post({ action: 'history-save', userId: BO, date: '2026-11-21', round: round('c', { flawless: false, noHint: true, great: 1 }) });
+  post({ action: 'history-save', userId: BO, date: '2026-11-21', round: round('d') });
+  post({ action: 'wallet-earn', userId: BO, txId: 'e1', date: '2026-11-21', amount: 200 });
+  post({ action: 'wallet-earn', userId: BO, txId: 'e2', date: '2026-11-20', amount: 30 });
+  const { stats } = post({ action: 'stats', userId: BO, date: D });
+  assert.deepEqual(stats, { streak_best: 3, rounds_no_hint: 4, flawless_best: 2, owned: 0, words: 2, great_words: 7, full_days: 1, earned_total: 230 });
+  const users = objects(sheets.Users);
+  assert.deepEqual([Number(users[0].flawless_run), Number(users[0].flawless_best)], [1, 2]);
+});
+
+test('a claim pays the tier reward once and refuses tiers not reached', () => {
+  const { post, sheets } = newLearner();
+  post({ action: 'history-save', userId: BO, date: D, round: round('a') });
+  const first = post({ action: 'achievement-claim', userId: BO, achievementId: 'sharp', tier: 0, date: D });
+  assert.deepEqual([first.ok, first.reward, first.xp], [true, 50, 2050]);
+  const again = post({ action: 'achievement-claim', userId: BO, achievementId: 'sharp', tier: 0, date: D });
+  assert.deepEqual([again.ok, again.reward, again.xp], [true, 0, 2050]);
+  const early = post({ action: 'achievement-claim', userId: BO, achievementId: 'sharp', tier: 1, date: D });
+  assert.deepEqual([early.ok, early.error], [false, 'not_reached']);
+  assert.equal(post({ action: 'achievement-claim', userId: BO, achievementId: 'nope', tier: 0, date: D }).ok, false);
+  assert.equal(post({ action: 'achievement-claim', userId: BO, achievementId: 'sharp', tier: 9, date: D }).ok, false);
+  const { claimed } = post({ action: 'stats', userId: BO, date: D });
+  assert.deepEqual(claimed.map((c) => [c.id, Number(c.tier)]), [['sharp', 0]]);
+  assert.equal(objects(sheets.Ledger).filter((r) => r.kind === 'reward').length, 1);
+  // Rewards are not practice earnings.
+  assert.equal(post({ action: 'wallet-get', userId: BO, date: D }).earnedToday, 0);
+});

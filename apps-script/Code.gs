@@ -19,13 +19,13 @@ const WORDS = {
 const HISTORY = {
   name: 'History',
   headers: ['date', 'rounds', 'best_xp', 'best_passed', 'total', 'best_avg_score', 'again_words', 'updated_at', 'last_round_key', 'user_id',
-    'xp_earned', 'best_points'],
+    'xp_earned', 'best_points', 'rounds_no_hint', 'rounds_flawless', 'great_words'],
   key: 'date',
 };
 // One row per learner. The id is made once by the app (name_8chars) and never changes.
 const USERS = {
   name: 'Users',
-  headers: ['id', 'name', 'created_at', 'updated_at', 'xp', 'owned', 'pet', 'theme'],
+  headers: ['id', 'name', 'created_at', 'updated_at', 'xp', 'owned', 'pet', 'theme', 'flawless_run', 'flawless_best'],
   key: 'id',
 };
 // Every XP change made by the app (the admin may also edit Users.xp by hand). tx_id makes retries harmless.
@@ -34,6 +34,25 @@ const LEDGER = {
   headers: ['tx_id', 'user_id', 'date', 'kind', 'amount', 'balance_after', 'ref', 'created_at'],
   key: 'tx_id',
 };
+// One row per achievement tier a learner unlocked (the reward is also in the Ledger).
+const ACHIEVEMENTS_TAB = {
+  name: 'Achievements',
+  headers: ['user_id', 'achievement_id', 'tier', 'reward', 'unlocked_at'],
+  key: 'user_id',
+};
+// Same thresholds and rewards as lib/achievements.js (a test compares them). Keep it plain JSON.
+const ACHIEVEMENT_CATALOG = {
+  "hard-working": { "measure": "streak_best", "thresholds": [3, 7, 14, 30, 60] },
+  "sharp": { "measure": "rounds_no_hint", "thresholds": [1, 5, 20, 50, 100] },
+  "flawless": { "measure": "flawless_best", "thresholds": [2, 5, 10, 20] },
+  "fashion": { "measure": "owned", "thresholds": [1, 3, 6, 12, 25] },
+  "word-hunter": { "measure": "words", "thresholds": [10, 50, 100, 250, 500] },
+  "golden-voice": { "measure": "great_words", "thresholds": [10, 50, 150, 400, 1000] },
+  "full-charge": { "measure": "full_days", "thresholds": [1, 5, 15, 40] },
+  "big-earner": { "measure": "earned_total", "thresholds": [1000, 5000, 15000, 40000, 100000] }
+};
+const TIER_REWARDS = [50, 100, 200, 400, 800];
+const FREE_ITEMS = ['mochi', 'lavender']; // owned by everyone, not counted for Fashion
 const DAY_CAP = 200; // XP a learner can earn from practice in one day (mirrors lib/xp.js)
 const START_XP = 2000; // a new learner's wallet
 const LEARNER_ID = /^[a-z0-9-]{1,20}_[a-z0-9]{8}$/;
@@ -57,6 +76,8 @@ function doPost(e) {
     if (body.action === 'wallet-get') return reply(withLock(() => walletGet(userId, String(body.date || ''))));
     if (body.action === 'wallet-earn') return reply(withLock(() => walletEarn(userId, body)));
     if (body.action === 'wallet-spend') return reply(withLock(() => walletSpend(userId, body)));
+    if (body.action === 'stats') return reply(withLock(() => statsReply(userId, String(body.date || ''))));
+    if (body.action === 'achievement-claim') return reply(withLock(() => claimAchievement(userId, body)));
     return reply({ ok: false, error: 'Unknown action' });
   } catch (err) {
     return reply({ ok: false, error: String(err && err.message ? err.message : err) });
@@ -245,8 +266,15 @@ function saveHistory(date, round, userId) {
   };
   if (usePoints) best.best_points = n(round.points);
   else best.best_xp = n(round.xp);
+  // Achievement counters (new apps send them; older apps leave them unchanged).
+  const counted = {
+    rounds_no_hint: (found ? n(found.obj.rounds_no_hint) : 0) + (round.noHint === true ? 1 : 0),
+    rounds_flawless: (found ? n(found.obj.rounds_flawless) : 0) + (round.flawless === true ? 1 : 0),
+    great_words: (found ? n(found.obj.great_words) : 0) + n(round.great),
+  };
+  if (typeof round.flawless === 'boolean' && userId) updateFlawlessRun(userId, round.flawless);
   if (!found) {
-    const day = Object.assign({ date: date, rounds: 1 }, best, { updated_at: now, last_round_key: round.key || '', user_id: userId || '' });
+    const day = Object.assign({ date: date, rounds: 1 }, best, counted, { updated_at: now, last_round_key: round.key || '', user_id: userId || '' });
     appendObject(data.t, day);
     return { ok: true, day: day };
   }
@@ -255,7 +283,7 @@ function saveHistory(date, round, userId) {
     ? String(old.best_points) === '' || isBetterRound({ xp: round.points, passed: round.passed, avgScore: round.avgScore },
       { xp: old.best_points, passed: old.best_passed, avgScore: old.best_avg_score })
     : isBetterRound(round, { xp: old.best_xp, passed: old.best_passed, avgScore: old.best_avg_score });
-  const values = Object.assign({ rounds: n(old.rounds) + 1 }, keep ? best : {}, { updated_at: now, last_round_key: round.key || '' });
+  const values = Object.assign({ rounds: n(old.rounds) + 1 }, keep ? best : {}, counted, { updated_at: now, last_round_key: round.key || '' });
   writeCells(data.t, found.rowNumber, values);
   return { ok: true, day: Object.assign({}, old, values) };
 }
@@ -406,4 +434,89 @@ function walletSpend(userId, body) {
   writeCells(req.user.t, req.user.rowNumber, { xp: xp });
   addLedger({ tx_id: req.txId, user_id: userId, date: req.date, kind: String(body.kind || 'hint'), amount: -amount, balance_after: xp, ref: String(body.ref || '') });
   return { ok: true, xp: xp };
+}
+
+// ---------- achievements ----------
+
+// Perfect rounds in a row (in the order they reach the Sheet).
+function updateFlawlessRun(userId, flawless) {
+  const user = findUser(userId);
+  if (!user) return;
+  const run = flawless ? (Number(user.obj.flawless_run) || 0) + 1 : 0;
+  const best = Math.max(Number(user.obj.flawless_best) || 0, run);
+  writeCells(user.t, user.rowNumber, { flawless_run: run, flawless_best: best });
+}
+
+function dayNumber(dateText) {
+  const p = String(dateText).split('-').map(Number);
+  return Math.round(Date.UTC(p[0], p[1] - 1, p[2]) / 86400000);
+}
+
+// Longest run of practiced days (a finished round, or money earned).
+function bestStreak(rows) {
+  const days = rows
+    .filter((r) => (Number(r.rounds) || 0) > 0 || (Number(r.xp_earned) || 0) > 0)
+    .map((r) => dayNumber(r.date))
+    .filter((d) => !isNaN(d))
+    .sort((a, b) => a - b);
+  let best = 0;
+  let run = 0;
+  let prev = null;
+  days.forEach((d) => {
+    if (d === prev) return;
+    run = prev !== null && d === prev + 1 ? run + 1 : 1;
+    best = Math.max(best, run);
+    prev = d;
+  });
+  return best;
+}
+
+function computeStats(userId, user) {
+  const n = (v) => Number(v) || 0;
+  const days = readObjects(HISTORY, userId);
+  const owned = String(user.obj.owned || '').split(',').map((s) => s.trim()).filter((s) => s && FREE_ITEMS.indexOf(s) === -1);
+  return {
+    streak_best: bestStreak(days),
+    rounds_no_hint: days.reduce((sum, r) => sum + n(r.rounds_no_hint), 0),
+    flawless_best: n(user.obj.flawless_best),
+    owned: owned.length,
+    words: readObjects(WORDS, userId).length,
+    great_words: days.reduce((sum, r) => sum + n(r.great_words), 0),
+    full_days: days.filter((r) => n(r.xp_earned) >= DAY_CAP).length,
+    earned_total: days.reduce((sum, r) => sum + n(r.xp_earned), 0),
+  };
+}
+
+function claimedBy(userId) {
+  return readRows(ACHIEVEMENTS_TAB).rows
+    .filter((r) => String(r.obj.user_id) === userId)
+    .map((r) => ({ id: String(r.obj.achievement_id), tier: Number(r.obj.tier) || 0, unlocked_at: cellText(r.obj.unlocked_at) }));
+}
+
+function statsReply(userId, date) {
+  const req = walletRequest(userId, { date: date });
+  if (req.error) return req.error;
+  const xp = walletBalance(req.user);
+  return { ok: true, stats: computeStats(userId, req.user), claimed: claimedBy(userId), xp: xp };
+}
+
+// Pays a tier once. The Sheet checks the learner really reached it.
+function claimAchievement(userId, body) {
+  const req = walletRequest(userId, { date: body.date });
+  if (req.error) return req.error;
+  const id = String(body.achievementId || '');
+  const tier = Math.floor(Number(body.tier));
+  const entry = ACHIEVEMENT_CATALOG[id];
+  if (!entry || !(tier >= 0 && tier < entry.thresholds.length)) return { ok: false, error: 'Unknown achievement' };
+  let xp = walletBalance(req.user);
+  const txId = 'ach:' + userId + ':' + id + ':' + tier;
+  if (ledgerFind(txId)) return { ok: true, reward: 0, xp: xp };
+  const stats = computeStats(userId, req.user);
+  if ((stats[entry.measure] || 0) < entry.thresholds[tier]) return { ok: false, error: 'not_reached' };
+  const reward = TIER_REWARDS[tier];
+  xp += reward;
+  writeCells(req.user.t, req.user.rowNumber, { xp: xp });
+  addLedger({ tx_id: txId, user_id: userId, date: req.date, kind: 'reward', amount: reward, balance_after: xp, ref: id + ':' + tier });
+  appendObject(getTable(ACHIEVEMENTS_TAB), { user_id: userId, achievement_id: id, tier: tier, reward: reward, unlocked_at: new Date().toISOString() });
+  return { ok: true, reward: reward, xp: xp };
 }
