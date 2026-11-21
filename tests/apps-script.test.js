@@ -323,3 +323,23 @@ test('equipping needs an owned or free item and is saved for the learner', () =>
   const w = post({ action: 'wallet-get', userId: BO, date: D });
   assert.deepEqual([w.theme, w.pet], ['lavender', 'mochi']);
 });
+
+test('shop ids that are not items are refused without touching the wallet', () => {
+  const { post, sheets } = newLearner();
+  for (const itemId of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    assert.equal(post({ action: 'shop-buy', userId: BO, itemId, date: D }).ok, false, itemId);
+    assert.equal(post({ action: 'shop-equip', userId: BO, kind: 'theme', itemId }).ok, false, itemId);
+  }
+  assert.equal(post({ action: 'achievement-claim', userId: BO, achievementId: 'constructor', tier: 0, date: D }).ok, false);
+  assert.equal(post({ action: 'wallet-get', userId: BO, date: D }).xp, 2000);
+  assert.equal(objects(sheets.Users)[0].owned, '');
+});
+
+test('a purchase cut in half (charged, not owned) is finished without charging again', () => {
+  const { post, sheets } = newLearner();
+  // The money was taken and the Ledger written, but the script stopped before saving owned.
+  post({ action: 'wallet-spend', userId: BO, txId: `buy:${BO}:fox-boy`, date: D, amount: 1500, kind: 'buy', ref: 'fox-boy' });
+  const out = post({ action: 'shop-buy', userId: BO, itemId: 'fox-boy', date: D });
+  assert.deepEqual([out.ok, out.xp, out.owned], [true, 500, ['fox-boy']]);
+  assert.equal(objects(sheets.Ledger).filter((r) => r.ref === 'fox-boy').length, 1);
+});

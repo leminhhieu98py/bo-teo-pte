@@ -82,6 +82,10 @@ const SHOP_PRICES = {
   "night": 4000
 };
 const PET_IDS = Object.keys(SHOP_PRICES).filter((id) => id.indexOf('-') !== -1).concat(['mochi']);
+// Only real keys: an id like "constructor" must never read an inherited property.
+function own(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
 const DAY_CAP = 200; // XP a learner can earn from practice in one day (mirrors lib/xp.js)
 const START_XP = 2000; // a new learner's wallet
 const LEARNER_ID = /^[a-z0-9-]{1,20}_[a-z0-9]{8}$/;
@@ -542,7 +546,7 @@ function claimAchievement(userId, body) {
   if (req.error) return req.error;
   const id = String(body.achievementId || '');
   const tier = Math.floor(Number(body.tier));
-  const entry = ACHIEVEMENT_CATALOG[id];
+  const entry = own(ACHIEVEMENT_CATALOG, id) ? ACHIEVEMENT_CATALOG[id] : null;
   if (!entry || !(tier >= 0 && tier < entry.thresholds.length)) return { ok: false, error: 'Unknown achievement' };
   let xp = walletBalance(req.user);
   const txId = 'ach:' + userId + ':' + id + ':' + tier;
@@ -571,14 +575,22 @@ function shopBuy(userId, body) {
   let xp = walletBalance(req.user);
   const owned = ownedList(req.user);
   if (FREE_ITEMS.indexOf(itemId) !== -1) return { ok: false, error: 'free_item', xp: xp, owned: owned };
+  if (!own(SHOP_PRICES, itemId)) return { ok: false, error: 'Unknown item' };
   const price = SHOP_PRICES[itemId];
-  if (!price) return { ok: false, error: 'Unknown item' };
   if (owned.indexOf(itemId) !== -1) return { ok: false, error: 'already_owned', xp: xp, owned: owned };
-  if (xp < price) return { ok: false, error: 'not_enough_xp', xp: xp, owned: owned };
-  xp -= price;
+  const txId = 'buy:' + userId + ':' + itemId;
   owned.push(itemId);
-  writeCells(req.user.t, req.user.rowNumber, { xp: xp, owned: owned.join(',') });
-  addLedger({ tx_id: 'buy:' + userId + ':' + itemId, user_id: userId, date: req.date, kind: 'buy', amount: -price, balance_after: xp, ref: itemId });
+  // Paid before but the item was not saved (the script stopped): finish without charging again.
+  if (ledgerFind(txId)) {
+    writeCells(req.user.t, req.user.rowNumber, { owned: owned.join(',') });
+    return { ok: true, xp: xp, owned: owned };
+  }
+  if (xp < price) return { ok: false, error: 'not_enough_xp', xp: xp, owned: owned.slice(0, -1) };
+  xp -= price;
+  // The Ledger row and the item first, the money last: a stop in between never charges twice.
+  addLedger({ tx_id: txId, user_id: userId, date: req.date, kind: 'buy', amount: -price, balance_after: xp, ref: itemId });
+  writeCells(req.user.t, req.user.rowNumber, { owned: owned.join(',') });
+  writeCells(req.user.t, req.user.rowNumber, { xp: xp });
   return { ok: true, xp: xp, owned: owned };
 }
 
@@ -588,7 +600,7 @@ function shopEquip(userId, body) {
   const kind = String(body.kind || '');
   const itemId = String(body.itemId || '');
   const isPet = PET_IDS.indexOf(itemId) !== -1;
-  const isTheme = !isPet && (itemId === 'lavender' || SHOP_PRICES[itemId] !== undefined);
+  const isTheme = !isPet && (itemId === 'lavender' || own(SHOP_PRICES, itemId));
   if ((kind === 'pet' && !isPet) || (kind === 'theme' && !isTheme) || (kind !== 'pet' && kind !== 'theme')) {
     return { ok: false, error: 'Wrong item' };
   }
