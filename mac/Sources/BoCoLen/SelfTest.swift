@@ -64,7 +64,7 @@ enum SelfTest {
       case "storage.set": Store.shared.set(body["items"] as? [String: Any] ?? [:]); reply(true)
       case "window.current": reply(viewId)
       case "window.find": reply([])
-      case "shortcut.get": reply("⌃⌥B")
+      case "shortcut.get": reply("⌘B")
       case "shortcut.list": reply(HotKey.presets.map { ["id": $0.id, "label": $0.label] })
       case "app.info": reply(["version": Updater.currentVersion, "update": "", "launchAtLogin": false])
       case "perm.status": reply(Permissions.status())
@@ -184,6 +184,16 @@ enum SelfTest {
     window.contentView = view
     window.orderFrontRegardless()
     windows.append(window)
+    if name == "history" {
+      // Show the loading state: settings exist and the Sheet answers slowly.
+      Store.shared.set(["settings": ["sheetUrl": "https://script.google.com/macros/s/test/exec", "token": "t", "apiKey": "k", "model": "m"]])
+      view.configuration.userContentController.addUserScript(WKUserScript(source: """
+        const realFetch = window.fetch.bind(window);
+        window.fetch = (url, init) => String(url).includes('script.google.com')
+          ? new Promise((resolve) => setTimeout(() => resolve(new Response('{"ok":true,"days":[]}')), 20000))
+          : realFetch(url, init);
+        """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
     view.load(URLRequest(url: WebRoot.url(path)))
     if name == "toast" {
       DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
