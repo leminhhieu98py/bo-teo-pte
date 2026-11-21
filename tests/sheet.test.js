@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { listWords, addWord, postReview, saveHistory, listHistory, listUsers, createUser, renameUser, walletGet, walletEarn, walletSpend, SheetError } from '../lib/sheet.js';
+import { listWords, addWord, postReview, saveHistory, listHistory, listUsers, createUser, renameUser, walletGet, walletEarn, walletSpend, getStats, claimAchievement, SheetError } from '../lib/sheet.js';
 
 function fakeFetch(body, status = 200) {
   const calls = [];
@@ -101,4 +101,13 @@ test('walletSpend reports a short wallet without throwing', async () => {
   assert.deepEqual(await walletSpend({ url, token: 't', userId: 'bo_1', txId: 'x', date: '2026-11-21', amount: 5, kind: 'hint', fetchImpl: short }),
     { ok: false, error: 'not_enough_xp', xp: 3 });
   await assert.rejects(walletSpend({ url, token: 't', userId: 'bo_1', txId: 'x', date: '2026-11-21', amount: 5, kind: 'hint', fetchImpl: fakeFetch({ ok: false, error: 'Wrong token' }) }), SheetError);
+});
+
+test('achievement calls', async () => {
+  const fetchImpl = fakeFetch({ ok: true, stats: { words: 3 }, claimed: [{ id: 'sharp', tier: 0 }], xp: 2050, reward: 50 });
+  assert.deepEqual(await getStats({ url, token: 't', userId: 'bo_1', date: '2026-11-21', fetchImpl }),
+    { stats: { words: 3 }, claimed: [{ id: 'sharp', tier: 0 }], xp: 2050 });
+  assert.deepEqual(await claimAchievement({ url, token: 't', userId: 'bo_1', achievementId: 'sharp', tier: 0, date: '2026-11-21', fetchImpl }),
+    { reward: 50, xp: 2050 });
+  assert.deepEqual(fetchImpl.calls[1].payload, { token: 't', action: 'achievement-claim', userId: 'bo_1', achievementId: 'sharp', tier: 0, date: '2026-11-21' });
 });

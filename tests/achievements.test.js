@@ -59,3 +59,19 @@ test('roundCounters: no hint, flawless and great words', () => {
   assert.deepEqual(roundCounters({ ...s, results: { ...s.results, b: { passed: true, score: 99, hints: 1 } } }), { noHint: false, flawless: false, great: 3 });
   assert.deepEqual(roundCounters({ ids: [], results: {} }), { noHint: false, flawless: false, great: 0 });
 });
+
+test('every category has a medal icon and every tier draws', async () => {
+  const { medalSvg, CATEGORY_ICONS } = await import('../ui/medals.js');
+  for (const a of ACHIEVEMENTS) {
+    assert.ok(CATEGORY_ICONS[a.icon], `${a.id} icon`);
+    for (let tier = -1; tier < a.thresholds.length; tier++) {
+      const svg = medalSvg(tier, a.icon);
+      assert.match(svg, /^<svg class="medal( locked)?"/);
+      assert.ok(svg.includes(CATEGORY_ICONS[a.icon]), `${a.id} ${tier}`);
+      assert.equal(svg.includes('medal-shine'), tier >= 0);
+    }
+  }
+  // Every medal has its own gradient ids, so many medals can share one page.
+  const ids = [medalSvg(0, 'flame'), medalSvg(0, 'flame')].map((s) => s.match(/id="(md\d+)r"/)[1]);
+  assert.notEqual(ids[0], ids[1]);
+});

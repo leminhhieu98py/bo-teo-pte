@@ -155,3 +155,24 @@ body.has-nav { padding-left: 76px; }
 .leave-actions { display: flex; gap: 12px; justify-content: center; }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes leave-pop { from { transform: scale(.85); opacity: .3; } }
+
+/* Achievement medals and the "Achievement unlocked!" popup */
+.medal { display: block; overflow: visible; }
+.medal .medal-shine { animation: medal-shine 3.2s ease-in-out infinite; }
+@keyframes medal-shine { 0%, 55% { transform: translateX(0); } 100% { transform: translateX(170px); } }
+.medal.locked { filter: saturate(.6); opacity: .8; }
+.unlock-card { position: relative; overflow: hidden; padding-top: 30px; }
+.unlock-rays {
+  position: absolute; left: 50%; top: 96px; width: 340px; height: 340px; margin: -170px 0 0 -170px; z-index: 0;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 201, 77, .22) 0 12deg, transparent 12deg 30deg);
+  border-radius: 50%; animation: unlock-spin 14s linear infinite; pointer-events: none;
+}
+.unlock-card > *:not(.unlock-rays) { position: relative; z-index: 1; }
+.unlock-medal { display: grid; place-items: center; animation: unlock-drop .8s cubic-bezier(.2, 1.5, .4, 1) both; }
+.unlock-kicker { margin: 10px 0 2px !important; color: var(--primary) !important; font-weight: 900 !important; letter-spacing: .04em; text-transform: uppercase; font-size: 13px; }
+.unlock-goal { margin: 6px 0 8px !important; }
+.unlock-reward { font-weight: 900; font-size: 30px; color: #C98A00; margin-bottom: 16px; animation: unlock-pop .6s .5s cubic-bezier(.2, 1.6, .4, 1) both; }
+.unlock-mascot { position: absolute !important; right: 10px; bottom: 8px; width: 64px; height: 58px; }
+@keyframes unlock-spin { to { transform: rotate(360deg); } }
+@keyframes unlock-drop { from { transform: translateY(-40px) rotateY(540deg) scale(.6); opacity: 0; } }
+@keyframes unlock-pop { from { transform: scale(.3); opacity: 0; } }

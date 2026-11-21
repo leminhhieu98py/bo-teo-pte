@@ -14,7 +14,7 @@ test('roundSummary counts passed words, average score and words to revisit', () 
       c: { passed: true, skipped: false, revealed: true, score: 0 },
     },
   };
-  assert.deepEqual(roundSummary(session, words), { points: 55, xp: 55, passed: 2, total: 3, avgScore: 74, again: ['look up', 'banana'] });
+  assert.deepEqual(roundSummary(session, words), { points: 55, xp: 55, passed: 2, total: 3, avgScore: 74, again: ['look up', 'banana'], noHint: true, flawless: false, great: 1 });
 });
 
 test('isBetterRound compares xp, then passed, then average score', () => {

@@ -27,6 +27,7 @@ import { Recorder } from './recorder.js';
 import { speak } from './speech.js';
 import { mountNav } from '../ui/nav.js';
 import { showNotice } from '../ui/notice.js';
+import { checkAchievements } from '../ui/achievements-check.js';
 
 // Leaving while a card is on screen asks first (the round is saved and resumes later).
 const nav = mountNav({ isBusy: () => !document.getElementById('screenCard').hidden });
@@ -220,6 +221,14 @@ function walletForDay(date) {
   if (!app.wallet || app.wallet.date === date) return;
   app.wallet = { ...app.wallet, date, earnedToday: 0 };
   refreshWallet();
+}
+
+// An achievement paid a reward: the Sheet's new balance plus what is still queued.
+async function rewardWallet(xp) {
+  const today = todayKey();
+  const pending = (await outbox.all()).filter((i) => i.payload?.userId === app.settings.userId);
+  const base = app.wallet || { userId: app.settings.userId, date: today, earnedToday: 0, owned: [], pet: '', theme: '' };
+  await setWallet(withPending({ ...base, xp }, pending, today));
 }
 
 async function changeWallet(delta, earned = 0) {
@@ -826,7 +835,7 @@ async function finishCard() {
   s.points = (s.points || 0) + share;
   s.debt = debt;
   s.earned = (s.earned || 0) + amount;
-  s.results[id] = { passed: st.passed, skipped: st.skipped, revealed: st.revealed, score: st.bestScore, points: share, earned: amount };
+  s.results[id] = { passed: st.passed, skipped: st.skipped, revealed: st.revealed, score: st.bestScore, hints: st.hints || 0, points: share, earned: amount };
   s.current = null;
   s.index = firstUnfinished(s);
   // Queue the Sheet updates before saving, so closing the page right now cannot lose them.
@@ -874,7 +883,8 @@ async function completeDay(celebrate = true) {
   const newBest = isBetterRound(round, s.best);
   if (newBest) s.best = round;
   await saveSessionHere(s);
-  outbox.send(item, sendItem);
+  // Once the round is in the Sheet, pay and celebrate any achievement it unlocked.
+  outbox.send(item, sendItem).then((sent) => sent && checkAchievements(app.settings, { onReward: rewardWallet }));
   updateTopbar();
   showSummary(celebrate, newBest);
 }
