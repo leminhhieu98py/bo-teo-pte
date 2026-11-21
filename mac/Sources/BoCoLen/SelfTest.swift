@@ -10,6 +10,7 @@ enum SelfTest {
     ("review", "review/review.html", NSSize(width: 1100, height: 780)),
     ("history", "history/history.html", NSSize(width: 820, height: 900)),
     ("achievements", "achievements/achievements.html", NSSize(width: 1000, height: 1400)),
+    ("shop", "shop/shop.html", NSSize(width: 1180, height: 1400)),
     ("options", "options/options.html", NSSize(width: 720, height: 1500)),
     ("toast", "native/toast.html", NSSize(width: 420, height: 150)),
     ("worker", "native/worker.html", NSSize(width: 200, height: 100)),
@@ -52,6 +53,11 @@ enum SelfTest {
     if let i = args.firstIndex(of: "--selftest-themes"), i + 1 < args.count {
       installTestHandler()
       themesScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
+      return true
+    }
+    if let i = args.firstIndex(of: "--selftest-shop"), i + 1 < args.count {
+      installTestHandler()
+      shopScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
       return true
     }
     if let i = args.firstIndex(of: "--selftest-achievements"), i + 1 < args.count {
@@ -168,6 +174,7 @@ enum SelfTest {
     ("history", "history/history.html", NSSize(width: 1180, height: 820)),
     ("achievements", "achievements/achievements.html", NSSize(width: 1180, height: 820)),
     ("settings", "options/options.html", NSSize(width: 1180, height: 820)),
+    ("shop", "shop/shop.html", NSSize(width: 1180, height: 820)),
     ("popup", "popup/popup.html", NSSize(width: 340, height: 560)),
   ]
 
@@ -250,6 +257,73 @@ enum SelfTest {
     }
     html += "</body></html>"
     try? html.write(to: out.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
+  }
+
+  // MARK: shop scenario (buy a pet, it is used at once, a theme too expensive, switch back for free)
+
+  private static func shopScenario(_ out: URL) {
+    try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+    seedPractice()
+    Web.shared.extraScripts = [WKUserScript(source: mockNetwork, injectionTime: .atDocumentStart, forMainFrameOnly: true)]
+    let id = Web.shared.open(WebRoot.url("shop/shop.html"))
+    guard let view = Web.shared.views[id] else {
+      print("SHOP no web view")
+      exit(1)
+    }
+    let probe = """
+      const card = (name) => [...document.querySelectorAll('.item')].find((c) => c.querySelector('h3').textContent === name);
+      const btn = (name) => card(name)?.querySelector('button, .in-use');
+      return JSON.stringify({
+        wallet: document.getElementById('wallet').textContent,
+        items: document.querySelectorAll('.item').length,
+        roxy: btn('Roxy') && btn('Roxy').textContent + (btn('Roxy').disabled ? ' (off)' : ''),
+        mochi: btn('Mochi') && btn('Mochi').textContent,
+        night: btn('Night Sky') ? btn('Night Sky').textContent + ' | ' + (card('Night Sky').querySelector('.need')?.textContent || '') : null,
+        headPet: document.querySelector('#mascot svg')?.getAttribute('class'),
+        confirm: document.querySelector('.leave-card h2')?.textContent || null,
+        popups: document.querySelectorAll('.leave-overlay').length,
+      });
+      """
+    func step(_ label: String, before: String = "", then next: @escaping () -> Void) {
+      view.callAsyncJavaScript("\(before)\n\(probe)", arguments: [:], in: nil, in: .page) { result in
+        switch result {
+        case .success(let value): print("SHOP \(label): \(value as? String ?? "?")")
+        case .failure(let error): print("SHOP \(label): error \(error)")
+        }
+        next()
+      }
+    }
+    func snapshot(_ name: String, then next: @escaping () -> Void) {
+      view.takeSnapshot(with: nil) { image, _ in
+        if let tiff = image?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+           let png = rep.representation(using: .png, properties: [:]) {
+          try? png.write(to: out.appendingPathComponent(name))
+        }
+        next()
+      }
+    }
+    let wait = "await new Promise((r) => setTimeout(r, 1500));"
+    let find = "const pick = (name) => [...document.querySelectorAll('.item')].find((c) => c.querySelector('h3').textContent === name).querySelector('button');"
+    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+      step("open") {
+        snapshot("shop-pets.png") {
+          step("ask to buy Roxy", before: "\(find) pick('Roxy').click(); await new Promise((r) => setTimeout(r, 500));") {
+            snapshot("shop-confirm.png") {
+              step("bought Roxy", before: "document.querySelector('[data-answer=yes]').click(); \(wait) document.querySelectorAll('.leave-overlay').forEach((o) => o.querySelector('button')?.click()); \(wait)") {
+                step("themes tab", before: "document.getElementById('tabThemes').click(); await new Promise((r) => setTimeout(r, 300));") {
+                  snapshot("shop-themes.png") {
+                    step("back to Mochi", before: "document.getElementById('tabPets').click(); \(find) pick('Mochi').click(); \(wait)") {
+                      print("SELFTEST SHOP DONE")
+                      exit(0)
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   // MARK: achievements scenario (mocked stats: several tiers to claim, popups one after another)
@@ -411,7 +485,20 @@ enum SelfTest {
             const day = (d, xp, rounds = 1) => ({ date: `2026-11-${String(d).padStart(2, '0')}`, rounds, xp_earned: xp, best_passed: 3, total: 3, best_avg_score: 88, again_words: '' });
             return json({ ok: true, days: window.__historyDays ? [3, 4, 5, 8, 12, 13, 14, 15, 17, 19, 20].map((d, i) => day(d, [20, 60, 120, 200, 35, 80, 150, 200, 200, 10, 90][i])) : [] });
           }
-          if (body.action === 'wallet-get') return json({ ok: true, xp: window.__xp, earnedToday: window.__earned, owned: [], pet: '', theme: window.__theme || '' });
+          if (body.action === 'wallet-get') return json({ ok: true, xp: window.__xp, earnedToday: window.__earned, owned: window.__owned || [], pet: window.__pet || '', theme: window.__theme || '' });
+          if (body.action === 'shop-buy') {
+            const price = body.itemId.includes('-') ? 1500 : 4000;
+            window.__owned = window.__owned || [];
+            if (window.__owned.includes(body.itemId)) return json({ ok: false, error: 'already_owned', xp: window.__xp, owned: window.__owned });
+            if (window.__xp < price) return json({ ok: false, error: 'not_enough_xp', xp: window.__xp, owned: window.__owned });
+            window.__xp -= price;
+            window.__owned.push(body.itemId);
+            return json({ ok: true, xp: window.__xp, owned: window.__owned });
+          }
+          if (body.action === 'shop-equip') {
+            if (body.kind === 'pet') window.__pet = body.itemId; else window.__theme = body.itemId;
+            return json({ ok: true, pet: window.__pet || '', theme: window.__theme || '' });
+          }
           if (body.action === 'wallet-earn') {
             const credited = Math.min(body.amount, 200 - window.__earned);
             window.__xp += credited; window.__earned += credited;
