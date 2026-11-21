@@ -19,7 +19,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/web"
 cp "$MAC/.build/release/BoCoLen" "$APP/Contents/MacOS/BoCoLen"
 cp "$MAC/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 # The same web pages as the Chrome extension, plus the Mac-only helpers in native/.
-for dir in lib ui review history achievements options popup icons native; do
+for dir in lib ui review history achievements shop options popup icons native; do
   rsync -a --exclude '.DS_Store' "$ROOT/$dir" "$APP/Contents/Resources/web/"
 done
 

@@ -1,5 +1,5 @@
 /* Shared look for popup, options and review pages. */
-:root {
+:root, [data-theme="lavender"] {
   --bg: #F5F1FF;
   --bg-2: #FFF7EC;
   --card: #FFFFFF;
@@ -399,3 +399,6 @@ body.has-nav { padding-left: 76px; }
 @keyframes pet-twinkle { 50% { transform: scale(.55) rotate(25deg); opacity: .55; } }
 .pet .float { animation: pet-float 2.2s ease-in-out infinite; }
 @keyframes pet-float { 50% { transform: translateY(-6px); } }
+
+.confirm-preview { display: grid; place-items: center; margin-bottom: 8px; }
+.confirm-preview .mascot { width: 130px; height: 118px; }

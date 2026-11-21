@@ -10,7 +10,7 @@ const ownTokens = (id) => block(new RegExp(`\\[data-theme="${id}"\\]\\s*\\{([\\s
 
 // Tokens of the default (:root) block, then each [data-theme="id"] block on top of it.
 function tokens(id) {
-  const base = block(/:root\s*\{([\s\S]*?)\n\}/);
+  const base = block(/:root[^{]*\{([\s\S]*?)\n\}/);
   if (id === 'lavender') return base;
   const own = ownTokens(id);
   assert.ok(Object.keys(own).length, `theme ${id} has a block`);

@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { NAV_ITEMS, activeNav, createLeaveGuard } from '../lib/nav.js';
 
-test('NAV_ITEMS lists Practice, History, Achievements and Settings in that order', () => {
+test('NAV_ITEMS lists Practice, History, Achievements, Shop and Settings in that order', () => {
   assert.deepEqual(NAV_ITEMS.map((i) => [i.id, i.label, i.page]), [
     ['practice', 'Practice', 'review/review.html'],
     ['history', 'History', 'history/history.html'],
     ['achievements', 'Achievements', 'achievements/achievements.html'],
+    ['shop', 'Shop', 'shop/shop.html'],
     ['settings', 'Settings', 'options/options.html'],
   ]);
 });

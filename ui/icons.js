@@ -11,6 +11,7 @@ export const ICONS = {
   practice: wrap('<rect x="3" y="7" width="13" height="14" rx="3" fill="currentColor" opacity=".2"/><rect x="3" y="7" width="13" height="14" rx="3"/><path d="M8 3.5h9.5a3 3 0 0 1 3 3V17"/><path d="M7 14h5"/>'),
   history: wrap('<rect x="3" y="5" width="18" height="16" rx="3" fill="currentColor" opacity=".2"/><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8 15h.01M12 15h.01M16 15h.01"/>'),
   medal: wrap('<path d="M8 3l3 6.5M16 3l-3 6.5"/><circle cx="12" cy="15" r="6" fill="currentColor" opacity=".2"/><circle cx="12" cy="15" r="6"/><path d="M12 12.3l.8 1.6 1.8.3-1.3 1.2.3 1.8-1.6-.8-1.6.8.3-1.8-1.3-1.2 1.8-.3z" fill="currentColor" stroke-width="1"/>'),
+  shop: wrap('<path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8z" fill="currentColor" opacity=".2"/><path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8z"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/>'),
   settings: wrap('<path d="M4 7h9M18 7h2M4 17h3M12 17h8"/><circle cx="15.5" cy="7" r="2.5" fill="currentColor" opacity=".2"/><circle cx="15.5" cy="7" r="2.5"/><circle cx="9.5" cy="17" r="2.5" fill="currentColor" opacity=".2"/><circle cx="9.5" cy="17" r="2.5"/>'),
 };
 
