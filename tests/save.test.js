@@ -80,3 +80,9 @@ test('describeSaveResult explains each outcome', () => {
   assert.match(describeSaveResult({ ok: false, error: { name: 'SetupError', code: '', message: 'Missing: key' } }).message, /needs setup/);
   assert.match(describeSaveResult({ ok: false, error: { name: 'SheetError', code: '', message: 'Wrong token' } }).message, /Wrong token/);
 });
+
+test('saving sends the learner id to the Sheet', async () => {
+  const fetchImpl = router({ gemini: geminiOk, sheet: (b) => [200, { ok: true, status: 'added', word: b.word }] });
+  await runSaveJob({ word: 'exclamation', context: '', url: '', settings: { ...settings, userId: 'bo_abcd1234' } }, { fetchImpl });
+  assert.equal(fetchImpl.calls[1].body.userId, 'bo_abcd1234');
+});
