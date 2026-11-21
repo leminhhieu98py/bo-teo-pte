@@ -35,6 +35,7 @@ const PAIRS = [
   ['ink', 'card', 4.5], ['ink', 'bg', 4.5], ['ink-soft', 'card', 4.5], ['ink', 'soft', 4.5],
   ['primary', 'card', 3], ['#FFFFFF', 'primary', 3], ['gold-ink', 'gold-soft', 4.5],
   ['mint-ink', 'mint-soft', 4.5], ['pink-ink', 'pink-soft', 4.5], ['red', 'red-soft', 3], ['primary', 'soft-2', 3],
+  ['on-accent', 'mint', 3], ['on-accent', 'lv3', 3], ['ink', 'lv1', 4.5], ['ink', 'lv2', 4.5],
 ];
 
 test('six themes: Lavender (free) and five for sale', () => {

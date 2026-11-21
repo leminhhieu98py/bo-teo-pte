@@ -25,8 +25,8 @@ main { max-width: 760px; margin: 32px auto 60px; padding: 0 16px; }
 .lv0 { background: var(--soft); }
 .lv1 { background: var(--lv1); }
 .lv2 { background: var(--lv2); }
-.lv3 { background: var(--lv3); color: #fff; }
-.lv4 { background: var(--mint); color: #fff; }
+.lv3 { background: var(--lv3); color: var(--on-accent); }
+.lv4 { background: var(--mint); color: var(--on-accent); }
 .legend { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 14px; font-size: 12px; font-weight: 800; color: var(--ink-soft); }
 .legend i { width: 16px; height: 16px; border-radius: 5px; display: inline-block; }
 
