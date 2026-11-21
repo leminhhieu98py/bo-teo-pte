@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { listWords, addWord, postReview, saveHistory, listHistory, listUsers, createUser, renameUser, walletGet, walletEarn, walletSpend, getStats, claimAchievement, SheetError } from '../lib/sheet.js';
+import { listWords, addWord, postReview, saveHistory, listHistory, listUsers, createUser, renameUser, walletGet, walletEarn, walletSpend, getStats, claimAchievement, shopBuy, shopEquip, SheetError } from '../lib/sheet.js';
 
 function fakeFetch(body, status = 200) {
   const calls = [];
@@ -110,4 +110,15 @@ test('achievement calls', async () => {
   assert.deepEqual(await claimAchievement({ url, token: 't', userId: 'bo_1', achievementId: 'sharp', tier: 0, date: '2026-11-21', fetchImpl }),
     { reward: 50, xp: 2050 });
   assert.deepEqual(fetchImpl.calls[1].payload, { token: 't', action: 'achievement-claim', userId: 'bo_1', achievementId: 'sharp', tier: 0, date: '2026-11-21' });
+});
+
+test('shop calls: a refused purchase is an answer, not an error', async () => {
+  const ok = fakeFetch({ ok: true, xp: 500, owned: ['night'] });
+  assert.deepEqual(await shopBuy({ url, token: 't', userId: 'bo_1', itemId: 'night', date: '2026-11-21', fetchImpl: ok }), { ok: true, xp: 500, owned: ['night'] });
+  assert.deepEqual(ok.calls[0].payload, { token: 't', action: 'shop-buy', userId: 'bo_1', itemId: 'night', date: '2026-11-21' });
+  const poor = fakeFetch({ ok: false, error: 'not_enough_xp', xp: 20, owned: [] });
+  assert.deepEqual(await shopBuy({ url, token: 't', userId: 'bo_1', itemId: 'night', date: '2026-11-21', fetchImpl: poor }), { ok: false, error: 'not_enough_xp', xp: 20, owned: [] });
+  await assert.rejects(shopBuy({ url, token: 't', userId: 'bo_1', itemId: 'x', date: '2026-11-21', fetchImpl: fakeFetch({ ok: false, error: 'Unknown item' }) }), SheetError);
+  const eq = fakeFetch({ ok: true, pet: 'fox-girl', theme: 'night' });
+  assert.deepEqual(await shopEquip({ url, token: 't', userId: 'bo_1', kind: 'pet', itemId: 'fox-girl', fetchImpl: eq }), { pet: 'fox-girl', theme: 'night' });
 });

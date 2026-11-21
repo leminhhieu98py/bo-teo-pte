@@ -52,7 +52,36 @@ const ACHIEVEMENT_CATALOG = {
   "big-earner": { "measure": "earned_total", "thresholds": [1000, 5000, 15000, 40000, 100000] }
 };
 const TIER_REWARDS = [50, 100, 200, 400, 800];
-const FREE_ITEMS = ['mochi', 'lavender']; // owned by everyone, not counted for Fashion
+const FREE_ITEMS = ['mochi', 'lavender']; // owned by everyone, never sold, not counted for Fashion
+// Shop prices, same as lib/shop.js (a test compares them). Keep it plain JSON.
+const SHOP_PRICES = {
+  "bunny-boy": 1500,
+  "bunny-girl": 1500,
+  "fox-boy": 1500,
+  "fox-girl": 1500,
+  "pug-boy": 1500,
+  "pug-girl": 1500,
+  "frog-boy": 1500,
+  "frog-girl": 1500,
+  "bear-boy": 1500,
+  "bear-girl": 1500,
+  "dragon-boy": 1500,
+  "dragon-girl": 1500,
+  "owl-boy": 1500,
+  "owl-girl": 1500,
+  "panda-boy": 1500,
+  "panda-girl": 1500,
+  "lion-boy": 1500,
+  "lion-girl": 1500,
+  "hamster-boy": 1500,
+  "hamster-girl": 1500,
+  "peach": 4000,
+  "mint": 4000,
+  "ocean": 4000,
+  "strawberry": 4000,
+  "night": 4000
+};
+const PET_IDS = Object.keys(SHOP_PRICES).filter((id) => id.indexOf('-') !== -1).concat(['mochi']);
 const DAY_CAP = 200; // XP a learner can earn from practice in one day (mirrors lib/xp.js)
 const START_XP = 2000; // a new learner's wallet
 const LEARNER_ID = /^[a-z0-9-]{1,20}_[a-z0-9]{8}$/;
@@ -78,6 +107,8 @@ function doPost(e) {
     if (body.action === 'wallet-spend') return reply(withLock(() => walletSpend(userId, body)));
     if (body.action === 'stats') return reply(withLock(() => statsReply(userId, String(body.date || ''))));
     if (body.action === 'achievement-claim') return reply(withLock(() => claimAchievement(userId, body)));
+    if (body.action === 'shop-buy') return reply(withLock(() => shopBuy(userId, body)));
+    if (body.action === 'shop-equip') return reply(withLock(() => shopEquip(userId, body)));
     return reply({ ok: false, error: 'Unknown action' });
   } catch (err) {
     return reply({ ok: false, error: String(err && err.message ? err.message : err) });
@@ -524,4 +555,47 @@ function claimAchievement(userId, body) {
   addLedger({ tx_id: txId, user_id: userId, date: req.date, kind: 'reward', amount: reward, balance_after: xp, ref: id + ':' + tier });
   appendObject(getTable(ACHIEVEMENTS_TAB), { user_id: userId, achievement_id: id, tier: tier, reward: reward, unlocked_at: new Date().toISOString() });
   return { ok: true, reward: reward, xp: xp };
+}
+
+// ---------- shop ----------
+
+function ownedList(user) {
+  return String(user.obj.owned || '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+// An owned item is never sold again; the wallet never goes below 0.
+function shopBuy(userId, body) {
+  const req = walletRequest(userId, { date: body.date });
+  if (req.error) return req.error;
+  const itemId = String(body.itemId || '');
+  let xp = walletBalance(req.user);
+  const owned = ownedList(req.user);
+  if (FREE_ITEMS.indexOf(itemId) !== -1) return { ok: false, error: 'free_item', xp: xp, owned: owned };
+  const price = SHOP_PRICES[itemId];
+  if (!price) return { ok: false, error: 'Unknown item' };
+  if (owned.indexOf(itemId) !== -1) return { ok: false, error: 'already_owned', xp: xp, owned: owned };
+  if (xp < price) return { ok: false, error: 'not_enough_xp', xp: xp, owned: owned };
+  xp -= price;
+  owned.push(itemId);
+  writeCells(req.user.t, req.user.rowNumber, { xp: xp, owned: owned.join(',') });
+  addLedger({ tx_id: 'buy:' + userId + ':' + itemId, user_id: userId, date: req.date, kind: 'buy', amount: -price, balance_after: xp, ref: itemId });
+  return { ok: true, xp: xp, owned: owned };
+}
+
+function shopEquip(userId, body) {
+  const user = userId ? findUser(userId) : null;
+  if (!user) return { ok: false, error: 'Learner not found' };
+  const kind = String(body.kind || '');
+  const itemId = String(body.itemId || '');
+  const isPet = PET_IDS.indexOf(itemId) !== -1;
+  const isTheme = !isPet && (itemId === 'lavender' || SHOP_PRICES[itemId] !== undefined);
+  if ((kind === 'pet' && !isPet) || (kind === 'theme' && !isTheme) || (kind !== 'pet' && kind !== 'theme')) {
+    return { ok: false, error: 'Wrong item' };
+  }
+  if (FREE_ITEMS.indexOf(itemId) === -1 && ownedList(user).indexOf(itemId) === -1) return { ok: false, error: 'not_owned' };
+  const values = {};
+  values[kind] = itemId;
+  writeCells(user.t, user.rowNumber, values);
+  Object.assign(user.obj, values);
+  return { ok: true, pet: String(user.obj.pet || ''), theme: String(user.obj.theme || '') };
 }

@@ -276,3 +276,50 @@ test('an older round sent again after a newer one is not counted twice', () => {
   assert.deepEqual([stats.rounds_no_hint, stats.great_words, stats.flawless_best], [2, 4, 1]);
   assert.equal(Number(post({ action: 'history-list', userId: BO }).days[0].rounds), 2);
 });
+
+// ---------- shop ----------
+
+import { PETS, THEMES } from '../lib/shop.js';
+
+test('Code.gs sells the same items at the same prices as the app', () => {
+  const src = readFileSync(new URL('../apps-script/Code.gs', import.meta.url), 'utf8');
+  const prices = JSON.parse(src.match(/const SHOP_PRICES = (\{[\s\S]*?\});/)[1]);
+  const free = JSON.parse(src.match(/const FREE_ITEMS = (\[[^\]]*\]);/)[1].replace(/'/g, '"'));
+  const app = [...PETS, ...THEMES];
+  assert.deepEqual(prices, Object.fromEntries(app.filter((i) => i.price > 0).map((i) => [i.id, i.price])));
+  assert.deepEqual(free.sort(), app.filter((i) => i.price === 0).map((i) => i.id).sort());
+});
+
+test('buying takes the price once, adds the item and counts for Fashion', () => {
+  const { post, sheets } = newLearner();
+  post({ action: 'wallet-earn', userId: BO, txId: 'e', date: D, amount: 200 });
+  const users = sheets.Users;
+  users.rows[1][users.rows[0].indexOf('xp')] = 6000; // the admin gives money
+  const pet = post({ action: 'shop-buy', userId: BO, itemId: 'fox-girl', date: D });
+  assert.deepEqual([pet.ok, pet.xp, pet.owned], [true, 4500, ['fox-girl']]);
+  const theme = post({ action: 'shop-buy', userId: BO, itemId: 'night', date: D });
+  assert.deepEqual([theme.ok, theme.xp, theme.owned], [true, 500, ['fox-girl', 'night']]);
+  const again = post({ action: 'shop-buy', userId: BO, itemId: 'night', date: D });
+  assert.deepEqual([again.ok, again.error, again.xp], [false, 'already_owned', 500]);
+  const poor = post({ action: 'shop-buy', userId: BO, itemId: 'bear-boy', date: D });
+  assert.deepEqual([poor.ok, poor.error, poor.xp], [false, 'not_enough_xp', 500]);
+  assert.equal(post({ action: 'shop-buy', userId: BO, itemId: 'mochi', date: D }).ok, false);
+  assert.equal(post({ action: 'shop-buy', userId: BO, itemId: 'unicorn', date: D }).ok, false);
+  assert.equal(objects(sheets.Ledger).filter((r) => r.kind === 'buy').length, 2);
+  assert.equal(post({ action: 'stats', userId: BO, date: D }).stats.owned, 2);
+  assert.deepEqual(post({ action: 'wallet-get', userId: BO, date: D }).owned, ['fox-girl', 'night']);
+});
+
+test('equipping needs an owned or free item and is saved for the learner', () => {
+  const { post, sheets } = newLearner();
+  sheets.Users.rows[1][sheets.Users.rows[0].indexOf('xp')] = 5000;
+  assert.equal(post({ action: 'shop-equip', userId: BO, kind: 'theme', itemId: 'night' }).ok, false);
+  post({ action: 'shop-buy', userId: BO, itemId: 'night', date: D });
+  const on = post({ action: 'shop-equip', userId: BO, kind: 'theme', itemId: 'night' });
+  assert.deepEqual([on.ok, on.theme, on.pet], [true, 'night', '']);
+  assert.equal(post({ action: 'shop-equip', userId: BO, kind: 'pet', itemId: 'mochi' }).ok, true);
+  assert.equal(post({ action: 'shop-equip', userId: BO, kind: 'pet', itemId: 'night' }).ok, false); // a theme is not a pet
+  assert.equal(post({ action: 'shop-equip', userId: BO, kind: 'theme', itemId: 'lavender' }).theme, 'lavender');
+  const w = post({ action: 'wallet-get', userId: BO, date: D });
+  assert.deepEqual([w.theme, w.pet], ['lavender', 'mochi']);
+});
