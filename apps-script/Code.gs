@@ -13,14 +13,21 @@ const SHEET_ID = '';
 const WORDS = {
   name: 'Words',
   headers: ['id', 'word', 'ipa', 'part_of_speech', 'meaning_vi', 'description_vi', 'example_en', 'example_vi',
-    'source_url', 'added_at', 'last_reviewed', 'review_count', 'fail_count', 'flagged', 'last_review_id'],
+    'source_url', 'added_at', 'last_reviewed', 'review_count', 'fail_count', 'flagged', 'last_review_id', 'user_id'],
   key: 'id',
 };
 const HISTORY = {
   name: 'History',
-  headers: ['date', 'rounds', 'best_xp', 'best_passed', 'total', 'best_avg_score', 'again_words', 'updated_at', 'last_round_key'],
+  headers: ['date', 'rounds', 'best_xp', 'best_passed', 'total', 'best_avg_score', 'again_words', 'updated_at', 'last_round_key', 'user_id'],
   key: 'date',
 };
+// One row per learner. The id is made once by the app (name_8chars) and never changes.
+const USERS = {
+  name: 'Users',
+  headers: ['id', 'name', 'created_at', 'updated_at'],
+  key: 'id',
+};
+const LEARNER_ID = /^[a-z0-9-]{1,20}_[a-z0-9]{8}$/;
 
 function doPost(e) {
   try {
@@ -28,11 +35,16 @@ function doPost(e) {
     if (TOKEN === 'CHANGE_ME') return reply({ ok: false, error: 'Set TOKEN in Code.gs and deploy again.' });
     if (body.token !== TOKEN) return reply({ ok: false, error: 'Wrong token. Check the app settings.' });
 
-    if (body.action === 'list') return reply({ ok: true, words: readObjects(WORDS) });
-    if (body.action === 'add') return reply(withLock(() => addWord(body.word || {})));
-    if (body.action === 'review') return reply(withLock(() => applyReviews(body.results || [])));
-    if (body.action === 'history-save') return reply(withLock(() => saveHistory(String(body.date || ''), body.round || {})));
-    if (body.action === 'history-list') return reply({ ok: true, days: readObjects(HISTORY) });
+    // userId is optional: requests from older apps (no learners) keep working on every row.
+    const userId = body.userId ? String(body.userId) : '';
+    if (body.action === 'list') return reply({ ok: true, words: readObjects(WORDS, userId) });
+    if (body.action === 'add') return reply(withLock(() => addWord(body.word || {}, userId)));
+    if (body.action === 'review') return reply(withLock(() => applyReviews(body.results || [], userId)));
+    if (body.action === 'history-save') return reply(withLock(() => saveHistory(String(body.date || ''), body.round || {}, userId)));
+    if (body.action === 'history-list') return reply({ ok: true, days: readObjects(HISTORY, userId) });
+    if (body.action === 'users-list') return reply({ ok: true, users: readObjects(USERS) });
+    if (body.action === 'users-create') return reply(withLock(() => createUser(String(body.id || ''), String(body.name || ''))));
+    if (body.action === 'users-rename') return reply(withLock(() => renameUser(String(body.id || ''), String(body.name || ''))));
     return reply({ ok: false, error: 'Unknown action' });
   } catch (err) {
     return reply({ ok: false, error: String(err && err.message ? err.message : err) });
@@ -108,8 +120,13 @@ function readRows(table) {
   return { t: t, rows: rows };
 }
 
-function readObjects(table) {
-  return readRows(table).rows.map((r) => r.obj);
+// With a learner id, only that learner's rows.
+function ownedBy(userId) {
+  return (row) => !userId || String(row.obj.user_id || '') === userId;
+}
+
+function readObjects(table, userId) {
+  return readRows(table).rows.filter(ownedBy(userId)).map((r) => r.obj);
 }
 
 function writeCells(t, rowNumber, values) {
@@ -127,11 +144,13 @@ function appendObject(t, obj) {
   range.setValues([row]);
 }
 
-function addWord(input) {
+function addWord(input, userId) {
   const text = String(input.word || '').trim();
   if (!text) return { ok: false, error: 'Missing word' };
   const data = readRows(WORDS);
-  const existing = data.rows.find((r) => String(r.obj.word).trim().toLowerCase() === text.toLowerCase());
+  // Each learner has their own list: the same word can be saved by two learners.
+  const existing = data.rows.filter(ownedBy(userId))
+    .find((r) => String(r.obj.word).trim().toLowerCase() === text.toLowerCase());
   if (existing) return { ok: true, status: 'exists', word: existing.obj };
 
   const word = {
@@ -150,14 +169,16 @@ function addWord(input) {
     fail_count: 0,
     flagged: false,
     last_review_id: '',
+    user_id: userId || '',
   };
   appendObject(data.t, word);
   return { ok: true, status: 'added', word: word };
 }
 
 // Each result carries a rid; a retried request with the same rid is not counted again.
-function applyReviews(results) {
+function applyReviews(results, userId) {
   const data = readRows(WORDS);
+  data.rows = data.rows.filter(ownedBy(userId));
   const now = new Date().toISOString();
   let updated = 0;
   results.forEach((result) => {
@@ -192,11 +213,12 @@ function isBetterRound(a, b) {
   return n(a.avgScore) > n(b.avgScore);
 }
 
-function saveHistory(date, round) {
+function saveHistory(date, round, userId) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: 'Bad date' };
   const n = (v) => Number(v) || 0;
   const data = readRows(HISTORY);
-  const found = data.rows.find((r) => r.obj.date === date);
+  // One row per learner and day (rows without a learner belong to older apps).
+  const found = data.rows.find((r) => r.obj.date === date && String(r.obj.user_id || '') === (userId || ''));
   // The same round sent twice (a retry) is not counted again.
   if (found && round.key && String(found.obj.last_round_key) === String(round.key)) return { ok: true, day: found.obj };
 
@@ -209,7 +231,7 @@ function saveHistory(date, round) {
     again_words: (round.again || []).join(', '),
   };
   if (!found) {
-    const day = Object.assign({ date: date, rounds: 1 }, best, { updated_at: now, last_round_key: round.key || '' });
+    const day = Object.assign({ date: date, rounds: 1 }, best, { updated_at: now, last_round_key: round.key || '', user_id: userId || '' });
     appendObject(data.t, day);
     return { ok: true, day: day };
   }
@@ -218,4 +240,48 @@ function saveHistory(date, round) {
   const values = Object.assign({ rounds: n(old.rounds) + 1 }, keep ? best : {}, { updated_at: now, last_round_key: round.key || '' });
   writeCells(data.t, found.rowNumber, values);
   return { ok: true, day: Object.assign({}, old, values) };
+}
+
+// ---------- learners ----------
+
+function cleanName(name) {
+  return String(name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+}
+
+// Creating the same id twice returns the first one. The very first learner also gets every row
+// saved before learners existed (rows without user_id), so no history is lost.
+function createUser(id, name) {
+  const clean = cleanName(name);
+  if (!LEARNER_ID.test(id)) return { ok: false, error: 'Bad learner id' };
+  if (!clean) return { ok: false, error: 'Missing learner name' };
+  const users = readRows(USERS);
+  const existing = users.rows.find((r) => r.obj.id === id);
+  if (existing) return { ok: true, user: existing.obj, claimed: 0 };
+
+  const now = new Date().toISOString();
+  const user = { id: id, name: clean, created_at: now, updated_at: now };
+  appendObject(users.t, user);
+  let claimed = 0;
+  if (users.rows.length === 0) {
+    [WORDS, HISTORY].forEach((table) => {
+      const data = readRows(table);
+      data.rows.filter((r) => !String(r.obj.user_id || '')).forEach((r) => {
+        writeCells(data.t, r.rowNumber, { user_id: id });
+        claimed++;
+      });
+    });
+  }
+  return { ok: true, user: user, claimed: claimed };
+}
+
+// Only the display name changes; the id stays the same forever.
+function renameUser(id, name) {
+  const clean = cleanName(name);
+  if (!clean) return { ok: false, error: 'Missing learner name' };
+  const users = readRows(USERS);
+  const row = users.rows.find((r) => r.obj.id === id);
+  if (!row) return { ok: false, error: 'Learner not found' };
+  const values = { name: clean, updated_at: new Date().toISOString() };
+  writeCells(users.t, row.rowNumber, values);
+  return { ok: true, user: Object.assign({}, row.obj, values) };
 }

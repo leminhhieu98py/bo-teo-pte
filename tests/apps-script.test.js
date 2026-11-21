@@ -66,3 +66,56 @@ test('wrong token is refused', () => {
   const { post } = loadCodeGs();
   assert.equal(post({ token: 'nope', action: 'list' }).ok, false);
 });
+
+// ---------- learners ----------
+
+test('the first learner claims rows saved before learners existed', () => {
+  const { post } = loadCodeGs();
+  post({ action: 'add', word: { word: 'cat' } });
+  post({ action: 'history-save', date: '2026-11-20', round: { key: 'k', xp: 10, passed: 1, total: 1, avgScore: 80, again: [] } });
+  const created = post({ action: 'users-create', id: 'bo_abcd1234', name: 'Bo' });
+  assert.equal(created.user.id, 'bo_abcd1234');
+  assert.equal(created.claimed, 2);
+  assert.deepEqual(post({ action: 'list', userId: 'bo_abcd1234' }).words.map((w) => w.word), ['cat']);
+  assert.equal(post({ action: 'history-list', userId: 'bo_abcd1234' }).days.length, 1);
+  assert.equal(post({ action: 'users-create', id: 'an_abcd1234', name: 'An' }).claimed, 0);
+});
+
+test('each learner sees and changes only their own words and history', () => {
+  const { post } = loadCodeGs();
+  post({ action: 'users-create', id: 'bo_abcd1234', name: 'Bo' });
+  post({ action: 'users-create', id: 'an_abcd1234', name: 'An' });
+  const bo = post({ action: 'add', userId: 'bo_abcd1234', word: { word: 'cat' } });
+  assert.equal(post({ action: 'add', userId: 'an_abcd1234', word: { word: 'Cat' } }).status, 'added');
+  assert.equal(post({ action: 'add', userId: 'bo_abcd1234', word: { word: 'cat' } }).status, 'exists');
+  assert.equal(post({ action: 'list', userId: 'bo_abcd1234' }).words.length, 1);
+  assert.equal(post({ action: 'list', userId: 'an_abcd1234' }).words.length, 1);
+
+  // An cannot review Bo's word.
+  assert.equal(post({ action: 'review', userId: 'an_abcd1234', results: [{ id: bo.word.id, needsReview: true, rid: 'r' }] }).updated, 0);
+  assert.equal(post({ action: 'review', userId: 'bo_abcd1234', results: [{ id: bo.word.id, needsReview: true, rid: 'r' }] }).updated, 1);
+
+  const round = { key: 'k1', xp: 10, passed: 1, total: 1, avgScore: 80, again: [] };
+  post({ action: 'history-save', userId: 'bo_abcd1234', date: '2026-11-21', round });
+  post({ action: 'history-save', userId: 'an_abcd1234', date: '2026-11-21', round: { ...round, xp: 50 } });
+  assert.equal(Number(post({ action: 'history-list', userId: 'bo_abcd1234' }).days[0].best_xp), 10);
+  assert.equal(Number(post({ action: 'history-list', userId: 'an_abcd1234' }).days[0].best_xp), 50);
+});
+
+test('renaming keeps the id; users-create is safe to repeat; bad ids are refused', () => {
+  const { post } = loadCodeGs();
+  post({ action: 'users-create', id: 'bo_abcd1234', name: 'Bo' });
+  assert.equal(post({ action: 'users-create', id: 'bo_abcd1234', name: 'Other' }).user.name, 'Bo');
+  assert.equal(post({ action: 'users-rename', id: 'bo_abcd1234', name: 'Bo Bo' }).user.name, 'Bo Bo');
+  assert.deepEqual(post({ action: 'users-list' }).users.map((u) => [u.id, u.name]), [['bo_abcd1234', 'Bo Bo']]);
+  assert.equal(post({ action: 'users-create', id: 'Bad Id', name: 'X' }).ok, false);
+  assert.equal(post({ action: 'users-create', id: 'x_abcd1234', name: '   ' }).ok, false);
+  assert.equal(post({ action: 'users-rename', id: 'nobody_abcd1234', name: 'X' }).ok, false);
+});
+
+test('requests without a learner keep the old behaviour', () => {
+  const { post } = loadCodeGs();
+  post({ action: 'users-create', id: 'bo_abcd1234', name: 'Bo' });
+  post({ action: 'add', userId: 'bo_abcd1234', word: { word: 'cat' } });
+  assert.equal(post({ action: 'list' }).words.length, 1);
+});
