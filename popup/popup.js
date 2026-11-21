@@ -25,7 +25,7 @@ async function render() {
   } else if (done > 0) {
     setMood($('mascot'), 'wow');
     $('greeting').textContent = 'Keep going, you are doing great!';
-    $('start').textContent = 'Continue review';
+    $('start').textContent = 'Continue practice';
   } else {
     setMood($('mascot'), 'idle');
   }

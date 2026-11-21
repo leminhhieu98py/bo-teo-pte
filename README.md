@@ -8,13 +8,13 @@ A private Chrome extension for learning English words.
 - **Save from a picture:** press **Command+B** with nothing highlighted, then drag a box around
   the word explanation (for example the popup of your learning site). Gemini reads the picture
   and saves its meaning. If the picture is not clear, you get "Not enough information".
-- **Review:** every day, review the 30 newest words + 20 random older words (+ words you
+- **Practice:** every day, practice the 30 newest words + 20 random older words (+ words you
   skipped yesterday). Read the Vietnamese meaning, type the English word, then say it out loud.
   Gemini grades the pronunciation with a strong focus on word stress. Pass with 70+ points and
   correct stress. After 3 failed tries you may skip; the word comes back tomorrow.
 
-- **Review again + History:** after finishing, press "Review again" to try to beat your best
-  score of the day. The History page (popup > History) shows a month calendar of your best
+- **Practice again + History:** after finishing, press "Practice again" to try to beat your best
+  score of the day. The History page (calendar icon in the top-left corner) shows a month calendar of your best
   result each day. History is saved in the Google Sheet tab `History`.
 
 Mochi the cat cheers you on with confetti, stars, combos, XP and a daily streak.
@@ -43,8 +43,8 @@ Daily use:
 |---|---|
 | Save a word | Highlight it in a web browser and press **Command+B** (other apps keep Command+B for bold; Settings offers shortcuts that work in every app) |
 | Save from the site's explanation | Press Command+B with nothing highlighted, drag a box around the explanation |
-| Review | Click Mochi in the menu bar > **Start review**, or click the app in the Dock |
-| History | Mochi in the menu bar > **History** |
+| Practice | Click Mochi in the menu bar > **Start practice**, or click the app in the Dock |
+| History, Settings | Icons in the top-left corner of the app window (hover for the name). While practicing, the app asks before leaving |
 
 Updates: the app checks GitHub every few hours. When a new version is out, Mochi's menu shows
 **Update to vX**; one click installs it and restarts the app. Settings > **Check for updates**
@@ -64,7 +64,7 @@ cd bo-teo-pte
 then opens Chrome and walks you through "Load unpacked". After that, Bo cố lên lives in Chrome;
 you do not need to run anything every day.
 
-The first time you review, Chrome asks for microphone access: click **Allow**. If macOS blocks
+The first time you practice, Chrome asks for microphone access: click **Allow**. If macOS blocks
 it, open **System Settings > Privacy & Security > Microphone** and turn on **Google Chrome**.
 
 ### Getting updates

@@ -164,7 +164,7 @@ enum MainMenu {
 
     let appItem = NSMenuItem()
     let appMenu = NSMenu()
-    appMenu.addItem(withTitle: "Start review", action: #selector(AppController.openReview), keyEquivalent: "r").target = target
+    appMenu.addItem(withTitle: "Start practice", action: #selector(AppController.openReview), keyEquivalent: "r").target = target
     appMenu.addItem(withTitle: "History", action: #selector(AppController.openHistory), keyEquivalent: "y").target = target
     appMenu.addItem(withTitle: "Settings…", action: #selector(AppController.openSettings), keyEquivalent: ",").target = target
     appMenu.addItem(.separator())
