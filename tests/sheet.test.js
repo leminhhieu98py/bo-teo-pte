@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { listWords, addWord, postReview, saveHistory, listHistory, SheetError } from '../lib/sheet.js';
+import { listWords, addWord, postReview, saveHistory, listHistory, listUsers, createUser, renameUser, SheetError } from '../lib/sheet.js';
 
 function fakeFetch(body, status = 200) {
   const calls = [];
@@ -62,4 +62,25 @@ test('errors from the script or HTTP become SheetError', async () => {
   await assert.rejects(listWords({ url, token: 'bad', fetchImpl: fakeFetch({ ok: false, error: 'bad token' }) }),
     (e) => e instanceof SheetError && e.message === 'bad token');
   await assert.rejects(listWords({ url, token: 't', fetchImpl: fakeFetch({}, 500) }), SheetError);
+});
+
+test('every call carries the learner id when given', async () => {
+  const fetchImpl = fakeFetch({ ok: true, words: [], days: [], status: 'added', word: {} });
+  await listWords({ url, token: 't', userId: 'bo_1', fetchImpl });
+  await addWord({ url, token: 't', userId: 'bo_1', word: { word: 'x' }, fetchImpl });
+  await postReview({ url, token: 't', userId: 'bo_1', results: [], fetchImpl });
+  await saveHistory({ url, token: 't', userId: 'bo_1', date: '2026-11-21', round: {}, fetchImpl });
+  await listHistory({ url, token: 't', userId: 'bo_1', fetchImpl });
+  assert.deepEqual(fetchImpl.calls.map((c) => c.payload.userId), ['bo_1', 'bo_1', 'bo_1', 'bo_1', 'bo_1']);
+  await listWords({ url, token: 't', fetchImpl });
+  assert.equal('userId' in fetchImpl.calls[5].payload, false);
+});
+
+test('learner actions', async () => {
+  const fetchImpl = fakeFetch({ ok: true, users: [{ id: 'bo_1', name: 'Bo' }], user: { id: 'bo_1', name: 'Bo' } });
+  assert.deepEqual(await listUsers({ url, token: 't', fetchImpl }), [{ id: 'bo_1', name: 'Bo' }]);
+  assert.deepEqual(await createUser({ url, token: 't', id: 'bo_1', name: 'Bo', fetchImpl }), { id: 'bo_1', name: 'Bo' });
+  await renameUser({ url, token: 't', id: 'bo_1', name: 'Bo Bo', fetchImpl });
+  assert.deepEqual(fetchImpl.calls.map((c) => c.payload.action), ['users-list', 'users-create', 'users-rename']);
+  assert.deepEqual(fetchImpl.calls[2].payload, { token: 't', action: 'users-rename', id: 'bo_1', name: 'Bo Bo' });
 });
