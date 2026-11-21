@@ -1,4 +1,5 @@
 import { setMood } from '../ui/mascot.js';
+import { mountNav } from '../ui/nav.js';
 import { getSettings, saveSettings, getErrorLog, clearErrorLog } from '../lib/storage.js';
 import { errorEntry, formatDetail } from '../lib/errors.js';
 import { listModels, filterFlashModels, pickDefaultModel } from '../lib/gemini.js';
@@ -276,6 +277,7 @@ async function setUpMacApp() {
   if (location.hash === '#shortcut') $('macCard').scrollIntoView({ behavior: 'smooth' });
 }
 
+mountNav();
 load();
 loadLearners();
 renderLog();

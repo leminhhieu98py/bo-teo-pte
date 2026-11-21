@@ -24,6 +24,10 @@ import { updateStreak, currentStreak, starsForScore, xpForCard, pickMessage } fr
 import { confetti, playSound, setMuted, floatXp } from './effects.js';
 import { Recorder } from './recorder.js';
 import { speak } from './speech.js';
+import { mountNav } from '../ui/nav.js';
+
+// Leaving while a card is on screen asks first (the round is saved and resumes later).
+const nav = mountNav({ isBusy: () => !document.getElementById('screenCard').hidden });
 
 const $ = (id) => document.getElementById(id);
 const SCREENS = ['screenLoading', 'screenMessage', 'screenCard', 'screenSummary'];
@@ -204,7 +208,7 @@ async function init() {
   const missing = missingSettings(settings);
   if (missing.length) {
     showMessage('Mochi needs a quick setup', `Missing: ${missing.join(', ')}. Open Settings and fill them in (ask your brother for the values).`,
-      'Open Settings', () => chrome.runtime.openOptionsPage(), 'oops');
+      'Open Settings', () => nav.go('options/options.html'), 'oops');
     return;
   }
   app.settings = settings;
@@ -801,7 +805,7 @@ $('nextBtn').addEventListener('click', finishCard);
 $('closeBtn').addEventListener('click', closeTab);
 $('againBtn').addEventListener('click', reviewAgain);
 $('continueBtn').addEventListener('click', continueAfterReveal);
-$('historyBtn').addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('history/history.html') }));
+$('historyBtn').addEventListener('click', () => nav.go('history/history.html'));
 $('muteBtn').addEventListener('click', async () => {
   app.muted = !app.muted;
   renderMute();

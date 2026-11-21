@@ -8,6 +8,9 @@ export const ICONS = {
   stop: wrap('<rect x="6" y="6" width="12" height="12" rx="3" fill="currentColor"/>'),
   soundOn: wrap('<path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M17 9a4 4 0 0 1 0 6"/>'),
   soundOff: wrap('<path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M17 9l4 6M21 9l-4 6"/>'),
+  practice: wrap('<rect x="3" y="7" width="13" height="14" rx="3" fill="currentColor" opacity=".2"/><rect x="3" y="7" width="13" height="14" rx="3"/><path d="M8 3.5h9.5a3 3 0 0 1 3 3V17"/><path d="M7 14h5"/>'),
+  history: wrap('<rect x="3" y="5" width="18" height="16" rx="3" fill="currentColor" opacity=".2"/><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8 15h.01M12 15h.01M16 15h.01"/>'),
+  settings: wrap('<path d="M4 7h9M18 7h2M4 17h3M12 17h8"/><circle cx="15.5" cy="7" r="2.5" fill="currentColor" opacity=".2"/><circle cx="15.5" cy="7" r="2.5"/><circle cx="9.5" cy="17" r="2.5" fill="currentColor" opacity=".2"/><circle cx="9.5" cy="17" r="2.5"/>'),
 };
 
 export function starSvg(on) {

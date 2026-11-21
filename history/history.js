@@ -1,5 +1,6 @@
 // Month calendar of daily results, read from the Sheet "History" tab.
 import { setMood } from '../ui/mascot.js';
+import { mountNav } from '../ui/nav.js';
 import { getSettings, missingSettings, appendErrorLog } from '../lib/storage.js';
 import { listHistory } from '../lib/sheet.js';
 import { monthGrid, dayLevel, monthTotals } from '../lib/history.js';
@@ -48,7 +49,7 @@ function renderDetail() {
   const nice = new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
   const parts = [el('h3', '', nice)];
   if (!row) {
-    parts.push(el('p', '', date === todayKey() ? 'No review yet today. Let us do one!' : 'No study on this day.'));
+    parts.push(el('p', '', date === todayKey() ? 'No practice yet today. Let us do one!' : 'No study on this day.'));
   } else {
     const stats = el('div', 'stats');
     stats.append(
@@ -118,4 +119,5 @@ async function init() {
 
 $('prevMonth').addEventListener('click', () => moveMonth(-1));
 $('nextMonth').addEventListener('click', () => moveMonth(1));
+mountNav();
 init();
