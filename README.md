@@ -30,7 +30,20 @@ A private Chrome extension for learning English words.
   (Bronze $50, Silver $100, Gold $200, Platinum $400, Diamond $800); the money is paid once when you reach
   it. Unlocked medals are in the Sheet tab `Achievements`.
 
-Mochi the cat cheers you on with confetti, stars, combos, money and a daily streak.
+- **Shop:** the bag icon opens the Shop. Buy one of 20 pets (10 personalities, each as a boy and a
+  girl, $1,500) to replace Mochi everywhere, or one of 5 themes ($4,000) that recolor the whole app.
+  Things you own can be switched any time for free and are never sold to you twice. The owned items
+  are in the Sheet tab `Users` (columns `owned`, `pet`, `theme`).
+
+Mochi the cat (or the pet you chose) cheers you on with confetti, stars, combos, money and a daily streak.
+
+### Review pages for the owner (not part of the app)
+
+- `dev/pets.html`: every pet in every mood with the real animations, in every theme. It needs a local
+  web server: run `python3 -m http.server 8765` in this folder, then open
+  <http://127.0.0.1:8765/dev/pets.html>.
+- Theme pictures: `"mac/dist/Bo cố lên.app/Contents/MacOS/BoCoLen" --selftest-themes "$PWD/dev/review/themes"`
+  makes pictures of every page in every theme and `dev/review/themes/index.html` to look at them.
 
 ## For the learner: the Mac app (recommended)
 
