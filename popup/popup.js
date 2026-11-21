@@ -1,5 +1,7 @@
 import { setMood } from '../ui/mascot.js';
-import { getSession, getStreak, getSettings } from '../lib/storage.js';
+import { getSession, getStreak, getSettings, getWallet, saveWallet, outbox } from '../lib/storage.js';
+import { walletGet } from '../lib/sheet.js';
+import { DAY_CAP, formatMoney, withPending } from '../lib/xp.js';
 import { todayKey } from '../lib/daily.js';
 import { currentStreak, todayStats, progressLabel } from '../lib/progress.js';
 
@@ -7,13 +9,17 @@ const $ = (id) => document.getElementById(id);
 
 async function render() {
   const today = todayKey();
-  const [session, streak] = await Promise.all([getSession(), getStreak()]);
+  const [session, streak, settings] = await Promise.all([getSession(), getStreak(), getSettings()]);
+  const cached = await getWallet();
+  const wallet = cached && cached.userId === settings.userId ? cached : null;
 
   $('streak').textContent = currentStreak(streak, today);
 
-  const stats = todayStats(session, today);
+  const stats = todayStats(session, today, wallet);
   const { total, done } = stats;
-  $('xp').textContent = stats.xp;
+  $('xp').textContent = formatMoney(stats.xp);
+  $('xpLabel').textContent = `of ${formatMoney(DAY_CAP)} today`;
+  $('wallet').textContent = stats.balance === null ? '$...' : formatMoney(stats.balance);
   $('progressText').textContent = progressLabel(stats);
   $('progressBar').style.width = total ? `${Math.round((done / total) * 100)}%` : '0%';
 
@@ -54,7 +60,22 @@ $('settings').addEventListener('click', () => {
   window.close();
 });
 
-render();
+// Show the cache at once, then the Sheet's wallet (plus writes still waiting to be sent).
+async function refreshWallet() {
+  const settings = await getSettings();
+  if (!settings.sheetUrl || !settings.token || !settings.userId) return;
+  const today = todayKey();
+  try {
+    const server = await walletGet({ url: settings.sheetUrl, token: settings.token, userId: settings.userId, date: today });
+    const pending = (await outbox.all()).filter((i) => i.payload?.userId === settings.userId);
+    await saveWallet(withPending({ userId: settings.userId, date: today, ...server }, pending, today));
+    await render();
+  } catch {
+    // Offline: the cached numbers stay.
+  }
+}
+
+render().then(refreshWallet);
 
 $('history').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('history/history.html') });

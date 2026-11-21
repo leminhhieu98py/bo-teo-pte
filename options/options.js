@@ -3,7 +3,9 @@ import { mountNav } from '../ui/nav.js';
 import { getSettings, saveSettings, getErrorLog, clearErrorLog } from '../lib/storage.js';
 import { errorEntry, formatDetail } from '../lib/errors.js';
 import { listModels, filterFlashModels, pickDefaultModel } from '../lib/gemini.js';
-import { listWords, listUsers, createUser, renameUser } from '../lib/sheet.js';
+import { listWords, listUsers, createUser, renameUser, walletGet } from '../lib/sheet.js';
+import { formatMoney } from '../lib/xp.js';
+import { todayKey } from '../lib/daily.js';
 import { makeLearnerId } from '../lib/learner.js';
 
 const $ = (id) => document.getElementById(id);
@@ -53,6 +55,20 @@ function learnerStatus(text, kind = '') {
 
 function showLearnerId(id) {
   $('learnerIdText').textContent = id ? `Learner id: ${id} (it never changes, even if you rename)` : 'A learner id is made from the first name you save.';
+  showWallet(id);
+}
+
+// Read-only: the admin changes a wallet in the Sheet (tab Users, column xp).
+async function showWallet(id) {
+  $('learnerWallet').textContent = '';
+  const settings = await getSettings();
+  if (!id || !settings.sheetUrl || !settings.token) return;
+  try {
+    const wallet = await walletGet({ url: settings.sheetUrl, token: settings.token, userId: id, date: todayKey() });
+    if ($('learnerSelect').value === id || settings.userId === id) $('learnerWallet').textContent = `Wallet: ${formatMoney(wallet.xp)}`;
+  } catch {
+    // Not created yet or offline: nothing to show.
+  }
 }
 
 async function loadLearners() {

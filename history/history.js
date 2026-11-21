@@ -3,7 +3,8 @@ import { setMood } from '../ui/mascot.js';
 import { mountNav } from '../ui/nav.js';
 import { getSettings, missingSettings, appendErrorLog } from '../lib/storage.js';
 import { listHistory } from '../lib/sheet.js';
-import { monthGrid, dayLevel, monthTotals } from '../lib/history.js';
+import { monthGrid, dayLevel, dayXp, monthTotals } from '../lib/history.js';
+import { formatMoney } from '../lib/xp.js';
 import { todayKey } from '../lib/daily.js';
 import { errorEntry, formatDetail } from '../lib/errors.js';
 
@@ -26,7 +27,7 @@ function renderMonth() {
   const cells = monthGrid(state.year, state.month).flat().map(({ date, inMonth }) => {
     const row = state.days.get(date);
     const button = el('button', `day lv${dayLevel(row)}${inMonth ? '' : ' out'}${date === today ? ' today' : ''}${date === state.selected ? ' selected' : ''}`, String(Number(date.slice(8))));
-    button.title = row ? `${date}: ${row.best_passed}/${row.total} passed, ${row.best_xp} XP` : date;
+    button.title = row ? `${date}: ${row.best_passed || 0}/${row.total || 0} passed, ${formatMoney(dayXp(row))} earned` : date;
     button.addEventListener('click', () => {
       state.selected = date;
       renderMonth();
@@ -39,7 +40,7 @@ function renderMonth() {
   const totals = monthTotals([...state.days.values()], state.year, state.month);
   $('totDays').textContent = totals.days;
   $('totPassed').textContent = totals.passed;
-  $('totXp').textContent = totals.xp;
+  $('totXp').textContent = formatMoney(totals.xp);
   setMood($('mascot'), totals.days >= 10 ? 'wow' : totals.days > 0 ? 'happy' : 'idle');
 }
 
@@ -54,9 +55,9 @@ function renderDetail() {
     const stats = el('div', 'stats');
     stats.append(
       el('span', 'pill', `${row.rounds} round${Number(row.rounds) === 1 ? '' : 's'}`),
-      el('span', 'pill', `Best: ${row.best_xp} XP`),
-      el('span', 'pill', `${row.best_passed} / ${row.total} passed`),
-      el('span', 'pill', `Avg score ${row.best_avg_score}`),
+      el('span', 'pill', `Earned: ${formatMoney(dayXp(row))}`),
+      el('span', 'pill', `${row.best_passed || 0} / ${row.total || 0} passed`),
+      el('span', 'pill', `Avg score ${row.best_avg_score || 0}`),
     );
     parts.push(stats);
     const again = String(row.again_words || '').split(',').map((w) => w.trim()).filter(Boolean);
