@@ -210,6 +210,27 @@ enum SelfTest {
       await sleep(2500);
       \(state.replacingOccurrences(of: "return JSON.stringify({", with: "return JSON.stringify({ afterWrongMessage: afterWrong,"))
       """
+    // Arrow keys cannot be pressed from JS, so the caret is moved the same way they move it.
+    let caret = """
+      const input = document.getElementById('answerInput');
+      const blink = () => [...document.querySelectorAll('#slots .slot')].findIndex((s) => s.classList.contains('cursor'));
+      const letters = () => [...document.querySelectorAll('#slots .slot')].map((s) => s.textContent || '_').join('');
+      input.focus();
+      input.value = 'ct';
+      input.dispatchEvent(new Event('input'));
+      const typedEnd = blink();
+      input.setSelectionRange(1, 1);
+      input.dispatchEvent(new Event('keyup'));
+      const afterLeft = blink();
+      input.setRangeText('a', 1, 1, 'end');
+      input.dispatchEvent(new Event('input'));
+      const afterInsert = { slots: letters(), blink: blink() };
+      document.querySelector('#slots .slot').click();
+      const afterClickFirst = blink();
+      input.value = '';
+      input.dispatchEvent(new Event('input'));
+      return JSON.stringify({ typedEnd, afterLeft, afterInsert, afterClickFirst });
+      """
     func report(_ label: String, _ js: String, then next: @escaping () -> Void) {
       view.callAsyncJavaScript(js, arguments: [:], in: nil, in: .page) { result in
         switch result {
@@ -221,6 +242,7 @@ enum SelfTest {
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
       report("start", state) {
+       report("caret", caret) {
         report("after wrong then correct", steps) {
           view.reload()
           DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
@@ -236,6 +258,7 @@ enum SelfTest {
             }
           }
         }
+       }
       }
     }
   }
