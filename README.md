@@ -27,8 +27,11 @@ and **updates itself**. No git, no terminal.
 1. Open the newest release: <https://github.com/leminhhieu98py/bo-teo-pte/releases/latest> and
    download `BoCoLen-<version>.zip`.
 2. Double-click the zip, then drag **Bo cố lên** into **Applications**.
-3. The first time only: right-click the app in Applications > **Open** > **Open** (the app is not
-   from the App Store, so macOS asks once).
+3. The first time only, macOS says it "could not verify" the app (it is not from the App Store).
+   Press **Done** (not Move to Trash), open **System Settings > Privacy & Security**, scroll down to
+   *"Bo cố lên.app" was blocked* and press **Open Anyway**, then confirm with your password.
+   Or run once in Terminal: `xattr -dr com.apple.quarantine "/Applications/Bo cố lên.app"`.
+   Updates installed by the app itself are not blocked.
 4. Settings opens: paste the Apps Script URL, the token and the Gemini key (ask your brother), press
    **Save**, then **Test Google Sheet**.
 5. In the **Mac app** box of Settings, press **Allow** for Accessibility, Screen Recording and
