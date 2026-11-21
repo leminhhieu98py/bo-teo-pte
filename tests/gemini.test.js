@@ -278,3 +278,10 @@ test('grading has one 15 s budget shared by both Gemini calls', async () => {
   );
   assert.deepEqual(timeouts, ['transcribe']);
 });
+
+test('a Vietnamese sentence in example_en is dropped (Gemini sometimes swaps the fields)', () => {
+  const vi = 'Từ này dùng để chỉ một dịp hoặc một thời điểm.';
+  assert.equal(parseEnrich({ meaning_vi: 'dịp', example_en: vi, example_vi: 'x' }, 'occasion').example_en, '');
+  assert.equal(parseImageResult({ ok: true, word: 'occasion', meaning_vi: 'dịp', example_en: vi }).example_en, '');
+  assert.equal(parseEnrich({ meaning_vi: 'dịp', example_en: 'A special occasion, café included.' }, 'occasion').example_en, 'A special occasion, café included.');
+});
