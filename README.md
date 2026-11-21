@@ -38,8 +38,8 @@ Daily use:
 
 | What | How |
 |---|---|
-| Save a word | Highlight it in any app and press **Control+Option+B** (change it in Settings) |
-| Save from the site's explanation | Press the shortcut with nothing highlighted, drag a box around the explanation |
+| Save a word | Highlight it in a web browser and press **Command+B** (other apps keep Command+B for bold; Settings offers shortcuts that work in every app) |
+| Save from the site's explanation | Press Command+B with nothing highlighted, drag a box around the explanation |
 | Review | Click Mochi in the menu bar > **Start review**, or click the app in the Dock |
 | History | Mochi in the menu bar > **History** |
 

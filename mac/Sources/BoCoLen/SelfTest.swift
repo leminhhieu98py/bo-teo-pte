@@ -17,6 +17,15 @@ enum SelfTest {
 
   static func runIfRequested() -> Bool {
     let args = CommandLine.arguments
+    // `--hotkey-check`: which front apps turn the default Command+B on.
+    if args.contains("--hotkey-check") {
+      let preset = HotKey.presets[0]
+      for app in ["com.google.Chrome", "com.apple.Safari", "company.thebrowser.Browser", "com.apple.Notes", "com.microsoft.Word", "com.tinyspeck.slackmacgap", "io.github.leminhhieu98py.bocolen"] {
+        print("HOTKEY \(preset.id) in \(app): \(HotKey.shouldBeActive(preset, frontBundleId: app) ? "on" : "off")")
+      }
+      print("HOTKEY default label: \(preset.label)")
+      exit(0)
+    }
     // `--verify-signature <app>`: would the updater accept this app? (signed like the running one)
     if let i = args.firstIndex(of: "--verify-signature"), i + 1 < args.count {
       print("SIGNED LIKE ME: \(Updater.signedLikeMe(URL(fileURLWithPath: args[i + 1])))")

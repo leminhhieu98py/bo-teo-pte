@@ -87,10 +87,18 @@ final class Saver {
 
 /// Carbon hot key: works in every app and needs no permission.
 final class HotKey {
-  struct Preset { let id: String; let label: String; let key: Int; let mods: Int }
+  struct Preset {
+    let id: String
+    let label: String
+    let key: Int
+    let mods: Int
+    var browserOnly = false
+  }
 
-  // Command+B is not offered: it would steal Bold in every app.
+  // Default: Command+B, but only while a web browser is the front app, so Bold keeps working in
+  // Notes, Pages, Word, Slack... (it is the same shortcut as the Chrome extension).
   static let presets: [Preset] = [
+    Preset(id: "cmd-b-browsers", label: "⌘B", key: kVK_ANSI_B, mods: cmdKey, browserOnly: true),
     Preset(id: "ctrl-opt-b", label: "⌃⌥B", key: kVK_ANSI_B, mods: controlKey | optionKey),
     Preset(id: "ctrl-opt-s", label: "⌃⌥S", key: kVK_ANSI_S, mods: controlKey | optionKey),
     Preset(id: "ctrl-shift-b", label: "⌃⇧B", key: kVK_ANSI_B, mods: controlKey | shiftKey),
@@ -103,20 +111,53 @@ final class HotKey {
   private var installed = false
   var onPress: (() -> Void)?
 
+  static let browsers: Set<String> = [
+    "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.dev", "com.google.Chrome.canary",
+    "com.apple.Safari", "com.apple.SafariTechnologyPreview", "com.microsoft.edgemac", "company.thebrowser.Browser",
+    "org.mozilla.firefox", "com.brave.Browser", "com.operasoftware.Opera", "com.vivaldi.Vivaldi",
+  ]
+
+  /// Should the shortcut be live while this app is in front?
+  static func shouldBeActive(_ preset: Preset, frontBundleId: String?) -> Bool {
+    !preset.browserOnly || browsers.contains(frontBundleId ?? "")
+  }
+
+  private var observer: NSObjectProtocol?
+
   /// Registers the preset; if macOS refuses it (another app owns the combo), the previous shortcut
-  /// stays active and false is returned.
+  /// stays active and false is returned. A browser-only preset is switched on and off as the
+  /// front app changes.
   @discardableResult
   func register(id: String) -> Bool {
     let wanted = Self.presets.first { $0.id == id } ?? Self.presets[0]
     installHandlerOnce()
+    watchFrontAppOnce()
+    let previous = current
+    current = wanted
+    if apply() { return true }
+    current = previous
+    _ = apply()
+    return false
+  }
+
+  /// Registers or unregisters for the front app. True unless macOS refused the combo.
+  @discardableResult
+  private func apply() -> Bool {
     if let ref { UnregisterEventHotKey(ref) }
     ref = nil
-    if tryRegister(wanted) {
-      current = wanted
-      return true
+    let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    guard Self.shouldBeActive(current, frontBundleId: front) else { return true }
+    return tryRegister(current)
+  }
+
+  private func watchFrontAppOnce() {
+    guard observer == nil else { return }
+    observer = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      guard let self, self.current.browserOnly else { return }
+      self.apply()
     }
-    _ = tryRegister(current)
-    return false
   }
 
   private func tryRegister(_ preset: Preset) -> Bool {
