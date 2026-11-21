@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSlots, letterCount, sanitizeTyped, composeSlots } from '../lib/slots.js';
+import { buildSlots, letterCount, sanitizeTyped, composeSlots, typedEdit, caretOffset } from '../lib/slots.js';
 
 const kinds = (cells) => cells.map((c) => c.kind).join(',');
 const chars = (cells) => cells.map((c) => c.ch || '_').join('');
@@ -47,4 +47,45 @@ test('composeSlots with a full hint is complete and equals the word', () => {
   const out = composeSlots(buildSlots("don't"), 4, '');
   assert.equal(out.answer, "don't");
   assert.equal(out.complete, true);
+});
+
+test('composeSlots blinks on the slot at the caret', () => {
+  const slots = buildSlots('look up');
+  assert.equal(composeSlots(slots, 0, 'lok', 1).cursor, 1);
+  assert.equal(composeSlots(slots, 0, 'lok', 0).cursor, 0);
+  assert.equal(composeSlots(slots, 0, 'lok', 3).cursor, 3);
+  // Fixed characters are skipped: letter 4 is after the space.
+  assert.equal(composeSlots(slots, 0, 'lookup', 4).cursor, 5);
+  // Hints come first, so the caret counts from the first typed slot.
+  assert.equal(composeSlots(buildSlots('Exclamation'), 2, 'cl', 0).cursor, 2);
+  // Without a caret it stays at the end of the typed letters.
+  assert.equal(composeSlots(slots, 0, 'lok').cursor, 3);
+});
+
+test('composeSlots is complete when every slot is filled, wherever the caret is', () => {
+  const out = composeSlots(buildSlots('cat'), 0, 'cat', 1);
+  assert.equal(out.complete, true);
+  assert.equal(out.cursor, 1);
+  assert.equal(composeSlots(buildSlots('cat'), 0, 'cat', 3).cursor, -1);
+});
+
+test('typedEdit keeps letters only and keeps the caret among the letters', () => {
+  assert.deepEqual(typedEdit('C-at', 2, 5, { typed: 'cat', caret: 1 }), { typed: 'cat', caret: 1 });
+  assert.deepEqual(typedEdit('cta', 2, 5, { typed: 'ca', caret: 1 }), { typed: 'cta', caret: 2 });
+  assert.deepEqual(typedEdit('ca', 1, 5, { typed: 'cta', caret: 2 }), { typed: 'ca', caret: 1 });
+});
+
+test('typedEdit ignores a new letter when every slot is full', () => {
+  assert.deepEqual(typedEdit('cxat', 2, 3, { typed: 'cat', caret: 1 }), { typed: 'cat', caret: 1 });
+  assert.deepEqual(typedEdit('catx', 4, 3, { typed: 'cat', caret: 3 }), { typed: 'cat', caret: 3 });
+});
+
+test('typedEdit cuts at max while an input method is composing', () => {
+  assert.deepEqual(typedEdit('cxat', 2, 3, { typed: 'cat', caret: 1 }, { composing: true }), { typed: 'cxa', caret: 2 });
+});
+
+test('caretOffset turns a letter caret into an input offset', () => {
+  assert.equal(caretOffset('cat', 2), 2);
+  assert.equal(caretOffset('cat', 9), 3);
+  assert.equal(caretOffset('cat', -1), 0);
 });

@@ -16,7 +16,7 @@ import {
   applyHint, revealAll,
 } from '../lib/card.js';
 import { maskWord } from '../lib/answer.js';
-import { buildSlots, letterCount, sanitizeTyped, composeSlots } from '../lib/slots.js';
+import { buildSlots, letterCount, sanitizeTyped, composeSlots, typedEdit, caretOffset } from '../lib/slots.js';
 import { letterDiff } from '../lib/diff.js';
 import { cleanWords } from '../lib/words.js';
 import { stableStringify } from '../lib/stable.js';
@@ -39,6 +39,7 @@ const app = {
   card: null,
   word: null,
   slots: [],
+  lastTyped: null, // last accepted { typed, caret } of the hidden input
   recorder: null,
   recordTimer: 0,
   busy: false,
@@ -292,9 +293,12 @@ function renderSlots(status = '') {
   const hints = app.card.hints || 0;
   const typed = sanitizeTyped($('answerInput').value, totalLetters() - hints);
   if ($('answerInput').value !== typed) $('answerInput').value = typed;
-  const { cells, cursor } = composeSlots(app.slots, hints, typed);
+  const caret = inputCaret();
+  app.lastTyped = { typed, caret };
+  const { cells, cursor } = composeSlots(app.slots, hints, typed, caret);
 
   const groups = [];
+  let letter = 0;
   let group = document.createElement('span');
   group.className = 'slot-word';
   cells.forEach((cell, i) => {
@@ -306,6 +310,7 @@ function renderSlots(status = '') {
     }
     const el = document.createElement('span');
     el.className = `slot ${cell.kind}${i === cursor ? ' cursor' : ''}`;
+    if (cell.kind !== 'fixed') el.dataset.letter = String(letter++); // a click puts the caret here
     el.textContent = cell.ch;
     group.append(el);
   });
@@ -315,6 +320,42 @@ function renderSlots(status = '') {
   $('slots').replaceChildren(...groups);
   $('slots').className = ['slots', totalLetters() > 12 ? 'small' : '', focused ? 'focused' : '', status].filter(Boolean).join(' ');
   $('hintBtn').disabled = hints >= totalLetters() || app.card.phase !== 'typing';
+}
+
+// Typed letters before the caret of the hidden input (its value holds letters only).
+function inputCaret() {
+  const input = $('answerInput');
+  return [...input.value.slice(0, input.selectionStart ?? input.value.length)].length;
+}
+
+function setInputCaret(caret) {
+  const input = $('answerInput');
+  const offset = caretOffset(input.value, caret);
+  if (input.selectionStart !== offset || input.selectionEnd !== offset) input.setSelectionRange(offset, offset);
+}
+
+// Arrow keys, Home/End or a click moved the caret: redraw the blinking slot.
+function refreshCaret() {
+  if (app.card?.phase !== 'typing' || !app.lastTyped) return;
+  if (inputCaret() !== app.lastTyped.caret) renderSlots();
+}
+
+function onTypedInput(e) {
+  const input = $('answerInput');
+  const max = totalLetters() - (app.card.hints || 0);
+  const next = typedEdit(input.value, input.selectionStart, max, app.lastTyped, { composing: e.isComposing });
+  if (input.value !== next.typed) input.value = next.typed;
+  if (!e.isComposing) setInputCaret(next.caret);
+  renderSlots();
+}
+
+function onSlotClick(e) {
+  const input = $('answerInput');
+  input.focus();
+  const slot = e.target.closest('.slot[data-letter]');
+  if (!slot || input.disabled || app.card?.phase !== 'typing') return;
+  setInputCaret(Math.max(0, Number(slot.dataset.letter) - (app.card.hints || 0)));
+  refreshCaret();
 }
 
 function finishRevealed() {
@@ -389,7 +430,9 @@ function giveHint(auto = false) {
   app.card = state;
   persistCard();
   // The hinted letter takes the first typed slot, so a correct prefix stays correct.
+  const caret = inputCaret();
   $('answerInput').value = $('answerInput').value.slice(1);
+  setInputCaret(Math.max(0, caret - 1));
   if (result === 'full') {
     finishRevealed();
     return;
@@ -743,10 +786,12 @@ function showSummary(celebrate, newBest = false) {
 
 $('answerForm').addEventListener('submit', onAnswer);
 $('hintBtn').addEventListener('click', () => giveHint(false));
-$('answerInput').addEventListener('input', () => renderSlots());
+$('answerInput').addEventListener('input', onTypedInput);
+['keyup', 'click', 'select'].forEach((type) => $('answerInput').addEventListener(type, refreshCaret));
+document.addEventListener('selectionchange', refreshCaret);
 $('answerInput').addEventListener('focus', () => $('slots').classList.add('focused'));
 $('answerInput').addEventListener('blur', () => $('slots').classList.remove('focused'));
-$('slots').addEventListener('click', () => $('answerInput').focus());
+$('slots').addEventListener('click', onSlotClick);
 $('speakBtn').addEventListener('click', () => { playReference(1, $('speakBtn')); $('speakBtn').blur(); });
 $('slowBtn').addEventListener('click', () => { playReference(0.6, $('slowBtn')); $('slowBtn').blur(); });
 $('micBtn').addEventListener('click', toggleRecord);
