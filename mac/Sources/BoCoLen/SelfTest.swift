@@ -234,6 +234,8 @@ enum SelfTest {
         { id: 'c', word: 'cat', meaning_vi: 'con mèo', example_en: 'A cat sleeps.', added_at: '2026-11-18T10:00:00Z', flagged: 'FALSE' },
       ];
       window.__sheetCalls = [];
+      window.__xp = 2000;
+      window.__earned = 0;
       const json = (o) => new Response(JSON.stringify(o), { status: 200, headers: { 'Content-Type': 'application/json' } });
       const real = window.fetch.bind(window);
       window.fetch = async (url, init) => {
@@ -243,6 +245,13 @@ enum SelfTest {
           window.__sheetCalls.push(body.action);
           if (body.action === 'list') return json({ ok: true, words });
           if (body.action === 'history-list') return json({ ok: true, days: [] });
+          if (body.action === 'wallet-get') return json({ ok: true, xp: window.__xp, earnedToday: window.__earned, owned: [], pet: '', theme: '' });
+          if (body.action === 'wallet-earn') {
+            const credited = Math.min(body.amount, 200 - window.__earned);
+            window.__xp += credited; window.__earned += credited;
+            return json({ ok: true, credited, xp: window.__xp, earnedToday: window.__earned });
+          }
+          if (body.action === 'wallet-spend') { window.__xp -= body.amount; return json({ ok: true, xp: window.__xp }); }
           return json({ ok: true, updated: 1, day: {} });
         }
         if (u.includes('generativelanguage')) return json({ candidates: [{ content: { parts: [{ text: '{"heard":"x","score":10}' }] } }] });
@@ -277,6 +286,7 @@ enum SelfTest {
         otherTabMessage: visible('screenMessage') ? document.getElementById('msgTitle').textContent : null,
         typing: visible('typingPart'), speaking: visible('speakingPart'),
         slots: [...document.querySelectorAll('#slots .slot')].map((s) => s.textContent || '_').join(''),
+        wallet: document.getElementById('xpPill').textContent,
         sheetCalls: window.__sheetCalls,
       });
       """
@@ -290,7 +300,7 @@ enum SelfTest {
       type('z'.repeat(answer.length));
       await sleep(1500);
       const afterWrong = document.getElementById('screenMessage').hidden ? 'none' : document.getElementById('msgTitle').textContent;
-      type(answer);
+      type(answer.slice(document.querySelectorAll('#slots .slot.hint').length));
       await sleep(2500);
       \(state.replacingOccurrences(of: "return JSON.stringify({", with: "return JSON.stringify({ afterWrongMessage: afterWrong,"))
       """
@@ -313,7 +323,11 @@ enum SelfTest {
       const afterClickFirst = blink();
       input.value = '';
       input.dispatchEvent(new Event('input'));
-      return JSON.stringify({ typedEnd, afterLeft, afterInsert, afterClickFirst });
+      const walletBefore = document.getElementById('xpPill').textContent;
+      document.getElementById('hintBtn').click();
+      await new Promise((r) => setTimeout(r, 1500));
+      const walletAfterHint = document.getElementById('xpPill').textContent;
+      return JSON.stringify({ typedEnd, afterLeft, afterInsert, afterClickFirst, walletBefore, walletAfterHint, calls: window.__sheetCalls });
       """
     func report(_ label: String, _ js: String, then next: @escaping () -> Void) {
       view.callAsyncJavaScript(js, arguments: [:], in: nil, in: .page) { result in
