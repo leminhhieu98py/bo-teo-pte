@@ -3,8 +3,10 @@
 import { NAV_ITEMS, activeNav, createLeaveGuard } from '../lib/nav.js';
 import { ICONS } from './icons.js';
 import { setMood } from './mascot.js';
+import { syncTheme } from './theme-sync.js';
 
 export function mountNav({ isBusy = () => false } = {}) {
+  syncTheme();
   const current = activeNav(location.pathname);
   const confirmLeave = createLeaveGuard({ isBusy, ask: askLeave });
   // The Mac app asks the page before loading another one in this window.

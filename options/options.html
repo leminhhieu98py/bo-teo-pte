@@ -6,6 +6,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../ui/theme.css">
+  <script src="../ui/theme-boot.js"></script>
   <style>
     main { max-width: 620px; margin: 40px auto; padding: 0 16px; }
     .head { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
@@ -19,13 +20,13 @@
     .row .input { flex: 1; min-width: 200px; }
     .hint-line { margin-top: 0; font-weight: 700; color: var(--ink-soft); }
     .perms { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-    .perms li { display: flex; align-items: center; gap: 10px; background: #F8F6FF; border-radius: 14px; padding: 10px 12px; font-weight: 700; }
+    .perms li { display: flex; align-items: center; gap: 10px; background: var(--soft); border-radius: 14px; padding: 10px 12px; font-weight: 700; }
     .perms li span.what { flex: 1; }
-    .perms .ok { color: #128C68; font-weight: 900; }
+    .perms .ok { color: var(--mint-ink); font-weight: 900; }
     .check { display: flex; align-items: center; gap: 10px; font-weight: 800; }
     .check input { width: 20px; height: 20px; accent-color: var(--primary); }
     .log { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-direction: column; gap: 8px; }
-    .log li { background: #F8F6FF; border-radius: 12px; padding: 10px 12px; font: 500 12px/1.45 ui-monospace, Menlo, monospace; word-break: break-word; }
+    .log li { background: var(--soft); border-radius: 12px; padding: 10px 12px; font: 500 12px/1.45 ui-monospace, Menlo, monospace; word-break: break-word; }
     .log li b { font-family: inherit; color: var(--primary); }
     .log .empty { background: none; color: var(--ink-soft); font-family: inherit; font-weight: 700; padding: 0; }
   </style>

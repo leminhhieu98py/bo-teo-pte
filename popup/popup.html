@@ -6,20 +6,21 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../ui/theme.css">
+  <script src="../ui/theme-boot.js"></script>
   <style>
     body { width: 320px; padding: 18px; }
     .top { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
     .top .mascot { width: 64px; height: 58px; }
     .top p { margin: 2px 0 0; color: var(--ink-soft); font-weight: 700; font-size: 13px; }
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
-    .stat { background: #fff; border-radius: 18px; padding: 12px; text-align: center; box-shadow: var(--shadow); }
+    .stat { background: var(--card); border-radius: 18px; padding: 12px; text-align: center; box-shadow: var(--shadow); }
     .stat b { display: block; font-size: 22px; font-weight: 900; color: var(--primary); white-space: nowrap; }
     .stat span { font-size: 12px; font-weight: 800; color: var(--ink-soft); }
-    .bar { height: 12px; background: #fff; border-radius: 99px; overflow: hidden; margin: 6px 0 16px; box-shadow: inset 0 0 0 2px var(--line); }
+    .bar { height: 12px; background: var(--card); border-radius: 99px; overflow: hidden; margin: 6px 0 16px; box-shadow: inset 0 0 0 2px var(--line); }
     .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--pink), var(--primary)); border-radius: 99px; transition: width .6s; }
     .actions { display: flex; flex-direction: column; gap: 10px; }
     .hint { margin-top: 14px; font-size: 13px; color: var(--ink-soft); font-weight: 700; text-align: center; }
-    kbd { background: #fff; border: 2px solid var(--line); border-bottom-width: 4px; border-radius: 8px; padding: 1px 6px; font-family: inherit; color: var(--ink); }
+    kbd { background: var(--card); border: 2px solid var(--line); border-bottom-width: 4px; border-radius: 8px; padding: 1px 6px; font-family: inherit; color: var(--ink); }
   </style>
 </head>
 <body>

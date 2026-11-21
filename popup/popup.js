@@ -1,4 +1,5 @@
 import { setMood } from '../ui/mascot.js';
+import { syncTheme } from '../ui/theme-sync.js';
 import { getSession, getStreak, getSettings, getWallet, saveWallet, outbox } from '../lib/storage.js';
 import { walletGet } from '../lib/sheet.js';
 import { DAY_CAP, formatMoney, withPending } from '../lib/xp.js';
@@ -75,6 +76,7 @@ async function refreshWallet() {
   }
 }
 
+syncTheme();
 render().then(refreshWallet);
 
 $('history').addEventListener('click', () => {

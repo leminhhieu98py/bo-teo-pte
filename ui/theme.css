@@ -11,10 +11,29 @@
   --mint: #2FC79A;
   --mint-soft: #E3FBF3;
   --yellow: #FFC94D;
-  --red: #F25C7A;
+  --red: #DE3F60;
   --red-soft: #FFE8EE;
   --line: #E7E0FF;
   --shadow: 0 12px 30px rgba(76, 52, 170, .14);
+  /* Every color a page uses comes from here, so a theme only redefines these. */
+  --soft: #F6F3FF; /* quiet panels on a card */
+  --soft-2: #EEE8FF; /* hint slots, loaders, tracks */
+  --gold-soft: #FFF3CC;
+  --gold-ink: #8A5600;
+  --pink-soft: #FFE3EC;
+  --pink-ink: #B02654;
+  --mint-ink: #0B7556;
+  --mint-dark: #1E9C77;
+  --lv1: #FFD9E6;
+  --lv2: #E2D6FF;
+  --lv3: #B9A4FF;
+  --example-line: #F3DDBE;
+  --glow-1: #FFE9F1;
+  --glow-2: #E4F7FF;
+  --veil: rgba(255, 255, 255, .85); /* rail and loading covers */
+  --scrim: rgba(45, 34, 80, .35); /* behind popups */
+  --focus: rgba(124, 92, 255, .15);
+  --mascot-backdrop: transparent;
   --radius: 24px;
   font-family: 'Nunito', ui-rounded, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--ink);
@@ -24,8 +43,8 @@
 
 body {
   margin: 0;
-  background: radial-gradient(circle at 10% 0%, #FFE9F1 0, transparent 40%),
-              radial-gradient(circle at 100% 30%, #E4F7FF 0, transparent 40%),
+  background: radial-gradient(circle at 10% 0%, var(--glow-1) 0, transparent 40%),
+              radial-gradient(circle at 100% 30%, var(--glow-2) 0, transparent 40%),
               var(--bg);
   color: var(--ink);
 }
@@ -51,9 +70,9 @@ h1, h2, h3 { margin: 0; font-weight: 900; letter-spacing: -0.01em; }
 .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
 .btn-primary { background: var(--primary); color: #fff; box-shadow: 0 5px 0 var(--primary-dark); }
 .btn-primary:active { box-shadow: 0 2px 0 var(--primary-dark); }
-.btn-mint { background: var(--mint); color: #fff; box-shadow: 0 5px 0 #1E9C77; }
-.btn-mint:active { box-shadow: 0 2px 0 #1E9C77; }
-.btn-ghost { background: #fff; color: var(--primary); box-shadow: 0 4px 0 var(--line); border: 2px solid var(--line); }
+.btn-mint { background: var(--mint); color: #fff; box-shadow: 0 5px 0 var(--mint-dark); }
+.btn-mint:active { box-shadow: 0 2px 0 var(--mint-dark); }
+.btn-ghost { background: var(--card); color: var(--primary); box-shadow: 0 4px 0 var(--line); border: 2px solid var(--line); }
 .btn-ghost:active { box-shadow: 0 1px 0 var(--line); }
 .btn-round { width: 52px; height: 52px; padding: 0; border-radius: 50%; }
 
@@ -73,12 +92,12 @@ h1, h2, h3 { margin: 0; font-weight: 900; letter-spacing: -0.01em; }
   padding: 12px 14px;
   border-radius: 14px;
   border: 2px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   outline: none;
   transition: border-color .2s, box-shadow .2s;
 }
-.input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(124, 92, 255, .15); }
+.input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px var(--focus); }
 /* Same height for every field; selects drop the small native look and get a matching chevron. */
 .input { min-height: 50px; line-height: 1.3; }
 select.input {
@@ -95,7 +114,7 @@ select.input {
 .pill {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 12px; border-radius: 999px; font-weight: 800; font-size: 13px;
-  background: #F1ECFF; color: var(--primary);
+  background: var(--soft-2); color: var(--primary);
 }
 
 .mascot svg { display: block; width: 100%; height: 100%; }
@@ -110,6 +129,184 @@ select.input {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
+/* Themes (bought in the Shop). Each one sets every color token; Lavender is :root above. */
+[data-theme="peach"] {
+  --bg: #FFF4EE;
+  --bg-2: #FFF8EE;
+  --card: #FFFFFF;
+  --ink: #3A2430;
+  --ink-soft: #7C5563;
+  --primary: #D6452A;
+  --primary-dark: #AE321A;
+  --pink: #FF9F86;
+  --mint: #2FC79A;
+  --mint-soft: #E3FBF3;
+  --yellow: #FFC94D;
+  --red: #E0445F;
+  --red-soft: #FFE8EC;
+  --line: #FBDCCD;
+  --shadow: 0 12px 30px rgba(190, 90, 50, .14);
+  --soft: #FFF5EF;
+  --soft-2: #FFE5D8;
+  --gold-soft: #FFF1CF;
+  --gold-ink: #8A5600;
+  --pink-soft: #FFE4DC;
+  --pink-ink: #B83A22;
+  --mint-ink: #0F7A5A;
+  --mint-dark: #1E9C77;
+  --lv1: #FFE3D6;
+  --lv2: #FFC6AC;
+  --lv3: #F7936F;
+  --example-line: #F6D3B8;
+  --glow-1: #FFE1D0;
+  --glow-2: #FFF1C9;
+  --veil: rgba(255, 255, 255, .85);
+  --scrim: rgba(58, 36, 48, .35);
+  --focus: rgba(232, 87, 58, .18);
+  --mascot-backdrop: transparent;
+}
+[data-theme="mint"] {
+  --bg: #EEFAF4;
+  --bg-2: #F6FBEF;
+  --card: #FFFFFF;
+  --ink: #1E3A32;
+  --ink-soft: #4F6E64;
+  --primary: #13906B;
+  --primary-dark: #0B6E51;
+  --pink: #FF9DB8;
+  --mint: #2FC79A;
+  --mint-soft: #E1F8EE;
+  --yellow: #FFC94D;
+  --red: #E0445F;
+  --red-soft: #FFE8EC;
+  --line: #CFEFE0;
+  --shadow: 0 12px 30px rgba(30, 120, 90, .14);
+  --soft: #F1FAF6;
+  --soft-2: #DAF3E8;
+  --gold-soft: #FFF3CC;
+  --gold-ink: #8A5600;
+  --pink-soft: #FFE6EE;
+  --pink-ink: #B8305E;
+  --mint-ink: #0B6E51;
+  --mint-dark: #1E9C77;
+  --lv1: #DDF4E9;
+  --lv2: #AEE6CD;
+  --lv3: #5DCBA3;
+  --example-line: #D6E9C5;
+  --glow-1: #E3FCDD;
+  --glow-2: #DDF4FF;
+  --veil: rgba(255, 255, 255, .85);
+  --scrim: rgba(30, 58, 50, .35);
+  --focus: rgba(19, 144, 107, .18);
+  --mascot-backdrop: transparent;
+}
+[data-theme="ocean"] {
+  --bg: #EEF5FF;
+  --bg-2: #F2F9FF;
+  --card: #FFFFFF;
+  --ink: #1C2B4A;
+  --ink-soft: #526384;
+  --primary: #2672DE;
+  --primary-dark: #1A56B0;
+  --pink: #FF8FB1;
+  --mint: #2FC79A;
+  --mint-soft: #E3FBF3;
+  --yellow: #FFC94D;
+  --red: #E0445F;
+  --red-soft: #FFE8EC;
+  --line: #D6E5FA;
+  --shadow: 0 12px 30px rgba(40, 90, 170, .14);
+  --soft: #F2F8FF;
+  --soft-2: #DDEBFF;
+  --gold-soft: #FFF3CC;
+  --gold-ink: #8A5600;
+  --pink-soft: #FFE6EE;
+  --pink-ink: #B8305E;
+  --mint-ink: #0F7A5A;
+  --mint-dark: #1E9C77;
+  --lv1: #DDEBFF;
+  --lv2: #B2D1FA;
+  --lv3: #6BA4F3;
+  --example-line: #CFE0F5;
+  --glow-1: #DDF3FF;
+  --glow-2: #E7E4FF;
+  --veil: rgba(255, 255, 255, .85);
+  --scrim: rgba(28, 43, 74, .35);
+  --focus: rgba(38, 114, 222, .18);
+  --mascot-backdrop: transparent;
+}
+[data-theme="strawberry"] {
+  --bg: #FFF0F4;
+  --bg-2: #FFF7EE;
+  --card: #FFFFFF;
+  --ink: #47233A;
+  --ink-soft: #805469;
+  --primary: #D93A69;
+  --primary-dark: #B0254F;
+  --pink: #FFB3C7;
+  --mint: #2FC79A;
+  --mint-soft: #E3FBF3;
+  --yellow: #FFC94D;
+  --red: #D93A50;
+  --red-soft: #FFE8EC;
+  --line: #F9D5E0;
+  --shadow: 0 12px 30px rgba(190, 50, 100, .14);
+  --soft: #FFF4F7;
+  --soft-2: #FFE0EA;
+  --gold-soft: #FFF3CC;
+  --gold-ink: #8A5600;
+  --pink-soft: #FFE0EA;
+  --pink-ink: #A8234B;
+  --mint-ink: #0F7A5A;
+  --mint-dark: #1E9C77;
+  --lv1: #FFE0EA;
+  --lv2: #FFB9CC;
+  --lv3: #F27E9F;
+  --example-line: #F7D2C2;
+  --glow-1: #FFE2EC;
+  --glow-2: #FFF3DE;
+  --veil: rgba(255, 255, 255, .85);
+  --scrim: rgba(71, 35, 58, .35);
+  --focus: rgba(217, 58, 105, .18);
+  --mascot-backdrop: transparent;
+}
+[data-theme="night"] {
+  --bg: #17142E;
+  --bg-2: #221E40;
+  --card: #262049;
+  --ink: #F1ECFF;
+  --ink-soft: #B6AEDB;
+  --primary: #8569F2;
+  --primary-dark: #5E43CF;
+  --pink: #FF8FB1;
+  --mint: #3BD7A7;
+  --mint-soft: #183A36;
+  --yellow: #FFD25E;
+  --red: #FF7590;
+  --red-soft: #3F1F35;
+  --line: #3A3468;
+  --shadow: 0 12px 30px rgba(0, 0, 0, .35);
+  --soft: #2E2857;
+  --soft-2: #2C2652;
+  --gold-soft: #3B3220;
+  --gold-ink: #FFD25E;
+  --pink-soft: #45213A;
+  --pink-ink: #FFA3BE;
+  --mint-ink: #6BF0C5;
+  --mint-dark: #22A27C;
+  --lv1: #3D2B55;
+  --lv2: #4E4090;
+  --lv3: #7B63E6;
+  --example-line: #4A4170;
+  --glow-1: #2B1F52;
+  --glow-2: #132A4C;
+  --veil: rgba(38, 32, 73, .88);
+  --scrim: rgba(5, 3, 15, .6);
+  --focus: rgba(160, 138, 255, .28);
+  --mascot-backdrop: radial-gradient(circle at 50% 55%, rgba(255, 255, 255, .9) 0 52%, rgba(255, 255, 255, 0) 68%);
+}
+.mascot { background: var(--mascot-backdrop); border-radius: 50%; }
+
 /* .btn and friends set display, which would otherwise beat the hidden attribute. */
 [hidden] { display: none !important; }
 
@@ -118,7 +315,7 @@ body.has-nav { padding-left: 76px; }
 .nav-rail {
   position: fixed; top: 18px; left: 14px; z-index: 60;
   display: flex; flex-direction: column; gap: 10px;
-  padding: 8px; background: rgba(255, 255, 255, .85); border-radius: 22px;
+  padding: 8px; background: var(--veil); border-radius: 22px;
   box-shadow: var(--shadow);
 }
 .nav-btn {
@@ -135,7 +332,7 @@ body.has-nav { padding-left: 76px; }
 .nav-tip {
   position: absolute; left: calc(100% + 12px); top: 50%; transform: translate(-6px, -50%);
   padding: 6px 12px; border-radius: 12px; white-space: nowrap;
-  background: var(--ink); color: #fff; font: inherit; font-weight: 800; font-size: 13px;
+  background: var(--ink); color: var(--card); font: inherit; font-weight: 800; font-size: 13px;
   opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s;
 }
 .nav-tip::before {
@@ -147,7 +344,7 @@ body.has-nav { padding-left: 76px; }
 /* "Leave practice?" popup */
 .leave-overlay {
   position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px;
-  background: rgba(45, 34, 80, .35); animation: fade-in .15s ease;
+  background: var(--scrim); animation: fade-in .15s ease;
 }
 .leave-card { width: min(420px, 100%); text-align: center; padding: 26px 26px 22px; animation: leave-pop .35s cubic-bezier(.2, 1.6, .4, 1); }
 .leave-card .leave-mascot { width: 96px; height: 88px; margin: 0 auto 8px; }
@@ -171,7 +368,7 @@ body.has-nav { padding-left: 76px; }
 .unlock-medal { display: grid; place-items: center; animation: unlock-drop .8s cubic-bezier(.2, 1.5, .4, 1) both; }
 .unlock-kicker { margin: 10px 0 2px !important; color: var(--primary) !important; font-weight: 900 !important; letter-spacing: .04em; text-transform: uppercase; font-size: 13px; }
 .unlock-goal { margin: 6px 0 8px !important; }
-.unlock-reward { font-weight: 900; font-size: 30px; color: #C98A00; margin-bottom: 16px; animation: unlock-pop .6s .5s cubic-bezier(.2, 1.6, .4, 1) both; }
+.unlock-reward { font-weight: 900; font-size: 30px; color: var(--gold-ink); margin-bottom: 16px; animation: unlock-pop .6s .5s cubic-bezier(.2, 1.6, .4, 1) both; }
 .unlock-mascot { position: absolute !important; right: 10px; bottom: 8px; width: 64px; height: 58px; }
 @keyframes unlock-spin { to { transform: rotate(360deg); } }
 @keyframes unlock-drop { from { transform: translateY(-40px) rotateY(540deg) scale(.6); opacity: 0; } }
