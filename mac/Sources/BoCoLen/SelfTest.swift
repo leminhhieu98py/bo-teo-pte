@@ -48,6 +48,11 @@ enum SelfTest {
       learnerScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
       return true
     }
+    if let i = args.firstIndex(of: "--selftest-nav"), i + 1 < args.count {
+      installTestHandler()
+      navScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
+      return true
+    }
     if let i = args.firstIndex(of: "--selftest-review"), i + 1 < args.count {
       installTestHandler()
       reviewScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
@@ -144,6 +149,81 @@ enum SelfTest {
     }
   }
 
+  // MARK: nav scenario (one window; "Leave practice?" before another page)
+
+  private static func navScenario(_ out: URL) {
+    try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+    seedPractice()
+    Web.shared.extraScripts = [WKUserScript(source: mockNetwork, injectionTime: .atDocumentStart, forMainFrameOnly: true)]
+    let id = Web.shared.open(WebRoot.url("review/review.html"))
+    guard let view = Web.shared.views[id] else {
+      print("NAV no web view")
+      exit(1)
+    }
+    let probe = """
+      const card = document.getElementById('screenCard');
+      return JSON.stringify({
+        page: location.pathname,
+        rail: [...document.querySelectorAll('.nav-rail .nav-btn')].map((b) => b.getAttribute('aria-label') + (b.classList.contains('active') ? '*' : '')).join(','),
+        leavePopup: Boolean(document.querySelector('.leave-overlay')),
+        popupOpacity: document.querySelector('.leave-overlay') ? getComputedStyle(document.querySelector('.leave-overlay')).opacity + '/' + getComputedStyle(document.querySelector('.leave-card')).opacity : null,
+        card: card ? !card.hidden : null,
+        pageWindows: window.__pageWindows,
+      });
+      """
+    let pageWindows = { NSApp.windows.filter { $0.isVisible && $0.contentView is WKWebView }.count }
+    func step(_ label: String, before: String = "", wait: Double, then next: @escaping () -> Void) {
+      view.callAsyncJavaScript("window.__pageWindows = \(pageWindows()); \(before)\n\(probe)", arguments: [:], in: nil, in: .page) { result in
+        switch result {
+        case .success(let value): print("NAV \(label): \(value as? String ?? "?")")
+        case .failure(let error): print("NAV \(label): error \(error)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: next)
+      }
+    }
+    func snapshot(_ name: String, then next: @escaping () -> Void) {
+      view.takeSnapshot(with: nil) { image, _ in
+        if let tiff = image?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+           let png = rep.representation(using: .png, properties: [:]) {
+          try? png.write(to: out.appendingPathComponent(name))
+        }
+        next()
+      }
+    }
+    let history = WebRoot.url("history/history.html")
+    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+      step("practice", wait: 0) {
+        Web.shared.open(history)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+          step("asked for history", wait: 0) {
+            snapshot("nav-leave-popup.png") {
+              step("after Keep practicing", before: "document.querySelector('[data-answer=stay]').click(); await new Promise((r) => setTimeout(r, 300));", wait: 0) {
+                Web.shared.open(history)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                  view.evaluateJavaScript("document.querySelector('[data-answer=leave]').click()") { _, _ in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                      step("after Leave", wait: 0) {
+                        snapshot("nav-history.png") {
+                          Web.shared.open(WebRoot.url("options/options.html"))
+                          DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            step("settings without asking", wait: 0) {
+                              print("SELFTEST NAV DONE")
+                              exit(0)
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // MARK: review scenario (mocked Sheet + Gemini, separate storage)
 
   private static let mockNetwork = """
@@ -171,13 +251,17 @@ enum SelfTest {
     })();
     """
 
-  private static func reviewScenario(_ out: URL) {
-    try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+  private static func seedPractice() {
     Store.shared.set([
       "settings": ["sheetUrl": "https://script.google.com/macros/s/test/exec", "token": "t", "apiKey": "k", "model": "gemini-3.1-flash-lite",
                    "userId": "bo_k3x9q2mf", "userName": "Bo"],
       "session": NSNull(),
     ])
+  }
+
+  private static func reviewScenario(_ out: URL) {
+    try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+    seedPractice()
     let (_, view) = Web.shared.makeWebView()
     view.configuration.userContentController.addUserScript(WKUserScript(source: mockNetwork, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     let window = NSWindow(contentRect: NSRect(x: -4000, y: 0, width: 1100, height: 780), styleMask: [.borderless], backing: .buffered, defer: false)
