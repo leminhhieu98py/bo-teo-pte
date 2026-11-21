@@ -373,3 +373,29 @@ body.has-nav { padding-left: 76px; }
 @keyframes unlock-spin { to { transform: rotate(360deg); } }
 @keyframes unlock-drop { from { transform: translateY(-40px) rotateY(540deg) scale(.6); opacity: 0; } }
 @keyframes unlock-pop { from { transform: scale(.3); opacity: 0; } }
+
+/* Pets (ui/pets.js): light, looping animations per mood. */
+.pet { overflow: visible; }
+.pet .eyes, .pet .ears, .pet .wave, .pet .tear, .pet .sparkle, .pet .float { transform-box: fill-box; transform-origin: center; }
+.pet.mood-idle .eyes { animation: pet-blink 4.6s ease-in-out infinite; }
+@keyframes pet-blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.12); } }
+.pet .ears { transform-origin: 50% 100%; }
+.pet.mood-listen .ears { animation: pet-ears .45s ease-in-out infinite alternate; }
+@keyframes pet-ears { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
+.pet.mood-bye .wave { transform-origin: 30% 95%; animation: pet-wave .55s ease-in-out infinite alternate; }
+@keyframes pet-wave { from { transform: rotate(-16deg); } to { transform: rotate(14deg); } }
+.pet.mood-sad .tear { animation: pet-tear 1.8s ease-in infinite; }
+@keyframes pet-tear { 0% { transform: translateY(-4px); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(26px); opacity: 0; } }
+.pet.mood-sad .head { transform-box: view-box; transform-origin: 110px 190px; animation: pet-droop 3s ease-in-out infinite; }
+@keyframes pet-droop { 50% { transform: translateY(4px) scaleY(.98); } }
+.pet.mood-think .head { transform-box: view-box; transform-origin: 110px 190px; animation: pet-tilt 2.6s ease-in-out infinite; }
+@keyframes pet-tilt { 50% { transform: rotate(-5deg); } }
+.pet.mood-oops .head { transform-box: view-box; transform-origin: 110px 190px; animation: pet-shiver .35s ease-in-out 3; }
+@keyframes pet-shiver { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.pet.mood-happy .head, .pet.mood-wow .head { transform-box: view-box; transform-origin: 110px 190px; animation: pet-hop .9s ease-in-out infinite; }
+@keyframes pet-hop { 0%, 100% { transform: translateY(0) scaleY(1); } 40% { transform: translateY(-8px) scaleY(1.02); } 60% { transform: translateY(0) scaleY(.97); } }
+.pet .sparkle { animation: pet-twinkle 1.1s ease-in-out infinite; }
+.pet .sparkle:nth-of-type(2n) { animation-delay: .4s; }
+@keyframes pet-twinkle { 50% { transform: scale(.55) rotate(25deg); opacity: .55; } }
+.pet .float { animation: pet-float 2.2s ease-in-out infinite; }
+@keyframes pet-float { 50% { transform: translateY(-6px); } }

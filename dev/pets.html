@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Bo co len - pet review</title>
+  <link rel="stylesheet" href="../ui/theme.css">
+  <script src="../ui/theme-boot.js"></script>
+  <style>
+    body { padding: 24px 28px 60px; }
+    h1 { margin-bottom: 4px; }
+    .lead { color: var(--ink-soft); font-weight: 700; margin: 0 0 16px; }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 18px; position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 0; }
+    .bar button { font: inherit; font-weight: 800; border: 2px solid var(--line); background: var(--card); color: var(--ink); border-radius: 12px; padding: 6px 12px; cursor: pointer; }
+    .bar button.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .pet-row { background: var(--card); border-radius: 20px; box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 14px; }
+    .pet-row h2 { font-size: 18px; margin-bottom: 8px; }
+    .pet-row h2 small { color: var(--ink-soft); font-weight: 700; font-size: 14px; }
+    .moods { display: grid; grid-template-columns: repeat(8, minmax(90px, 1fr)); gap: 8px; }
+    .cell { text-align: center; font-size: 12px; font-weight: 800; color: var(--ink-soft); }
+    .cell .mascot { width: 100%; aspect-ratio: 220 / 200; animation: none; }
+    .sizes { display: flex; gap: 18px; align-items: flex-end; margin-top: 8px; }
+    .sizes .mascot { animation: none; }
+  </style>
+</head>
+<body>
+  <h1>Pet review</h1>
+  <p class="lead">Every pet in every mood, with the real animations. Boy and girl of a kind are next to each other.</p>
+  <div class="bar" id="bar"></div>
+  <div id="list"></div>
+  <script type="module">
+    import { PETS, THEMES } from '../lib/shop.js';
+    import { petSvg, PET_MOODS } from '../ui/pets.js';
+    const bar = document.getElementById('bar');
+    for (const t of THEMES) {
+      const b = document.createElement('button');
+      b.textContent = t.name;
+      b.onclick = () => {
+        document.documentElement.toggleAttribute('data-theme', t.id !== 'lavender');
+        if (t.id !== 'lavender') document.documentElement.setAttribute('data-theme', t.id);
+        bar.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+      };
+      if (t.id === 'lavender') b.classList.add('on');
+      bar.append(b);
+    }
+    const list = document.getElementById('list');
+    for (const pet of PETS) {
+      const row = document.createElement('section');
+      row.className = 'pet-row';
+      row.innerHTML = `<h2>${pet.name} <small>${pet.personality} ${pet.animal}${pet.gender ? ` · ${pet.gender}` : ''}</small></h2>`;
+      const moods = document.createElement('div');
+      moods.className = 'moods';
+      for (const mood of PET_MOODS) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.innerHTML = `<div class="mascot">${petSvg(pet.id, mood)}</div>${mood}`;
+        moods.append(cell);
+      }
+      row.append(moods);
+      const sizes = document.createElement('div');
+      sizes.className = 'sizes';
+      sizes.innerHTML = [200, 110, 90, 64].map((w) => `<div class="mascot" style="width:${w}px;height:${Math.round(w * 0.91)}px">${petSvg(pet.id, 'idle')}</div>`).join('') + '<span class="cell">real sizes: practice, popup, settings, popup icon</span>';
+      row.append(sizes);
+      list.append(row);
+    }
+  </script>
+</body>
+</html>
