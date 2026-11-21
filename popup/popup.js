@@ -1,5 +1,5 @@
 import { setMood } from '../ui/mascot.js';
-import { getSession, getStreak } from '../lib/storage.js';
+import { getSession, getStreak, getSettings } from '../lib/storage.js';
 import { todayKey } from '../lib/daily.js';
 import { currentStreak } from '../lib/progress.js';
 
@@ -29,6 +29,9 @@ async function render() {
   } else {
     setMood($('mascot'), 'idle');
   }
+
+  const { userName } = await getSettings();
+  if (userName && !(total && done >= total) && !(done > 0)) $('greeting').textContent = `Ready to learn, ${userName}?`;
 
   const commands = await chrome.commands.getAll();
   const save = commands.find((c) => c.name === 'save-word');

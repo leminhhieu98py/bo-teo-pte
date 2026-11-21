@@ -102,7 +102,7 @@ async function init() {
     return;
   }
   try {
-    const rows = await listHistory({ url: settings.sheetUrl, token: settings.token });
+    const rows = await listHistory({ url: settings.sheetUrl, token: settings.token, userId: settings.userId });
     state.days = new Map(rows.map((r) => [String(r.date), r]));
     $('status').textContent = '';
   } catch (err) {

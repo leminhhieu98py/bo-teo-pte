@@ -138,7 +138,7 @@ function micErrorText(err) {
 async function sendItem(item) {
   try {
     const { sheetUrl: url, token } = app.settings;
-    if (item.kind === 'review') await postReview({ url, token, results: [item.payload] });
+    if (item.kind === 'review') await postReview({ url, token, userId: item.payload.userId, results: [item.payload] });
     else if (item.kind === 'history') await saveHistory({ url, token, ...item.payload });
   } catch (err) {
     logError(err, item.kind === 'history' ? 'history' : 'sheet');
@@ -150,7 +150,7 @@ async function sendItem(item) {
 // matches what the History page shows. The local copy is only a cache for the popup.
 async function syncStreak() {
   try {
-    const rows = await listHistory({ url: app.settings.sheetUrl, token: app.settings.token });
+    const rows = await listHistory({ url: app.settings.sheetUrl, token: app.settings.token, userId: app.settings.userId });
     const pending = (await outbox.all()).filter((i) => i.kind === 'history').map((i) => ({ date: i.payload.date, rounds: 1 }));
     app.streak = streakFromHistory([...rows, ...pending], todayKey());
     await saveStreak(app.streak);
@@ -212,7 +212,7 @@ async function init() {
 
   let words;
   try {
-    words = cleanWords(await listWords({ url: settings.sheetUrl, token: settings.token }));
+    words = cleanWords(await listWords({ url: settings.sheetUrl, token: settings.token, userId: settings.userId }));
   } catch (err) {
     showMessage('Cannot open your word list', logError(err, 'sheet'), 'Try again', () => location.reload(), 'oops');
     return;
@@ -237,7 +237,8 @@ async function init() {
   } else if (session.index >= session.ids.length) {
     showSummary(false);
   } else {
-    say(fresh ? `Hi! ${session.ids.length} words today. Let's go!` : "Welcome back! Let's continue.", 'happy');
+    const name = settings.userName ? ` ${settings.userName}` : '';
+    say(fresh ? `Hi${name}! ${session.ids.length} words today. Let's go!` : `Welcome back${name}! Let's continue.`, 'happy');
     showCard();
   }
 }
@@ -658,7 +659,7 @@ async function finishCard() {
   s.index = firstUnfinished(s);
   // Queue the Sheet update before saving, so closing the page right now cannot lose it.
   // The rid lets the Sheet ignore the same result if it is sent twice.
-  const item = await outbox.add('review', { id, needsReview: needsReview(st), rid: `${s.date}#${s.round || 1}#${id}` });
+  const item = await outbox.add('review', { id, needsReview: needsReview(st), rid: `${s.date}#${s.round || 1}#${id}`, userId: app.settings.userId });
   await saveSessionHere(s);
   outbox.send(item, sendItem);
 
@@ -686,7 +687,7 @@ async function completeDay(celebrate = true) {
   s.completed = true; // saved together with the best round, so a reload cannot count it twice
   const round = { ...roundSummary(s, app.words), key: `${s.date}#${s.round || 1}` };
   // The History row (best round per day) is queued first; the key makes a repeat harmless.
-  const item = await outbox.add('history', { date: s.date, round });
+  const item = await outbox.add('history', { date: s.date, round, userId: app.settings.userId });
   app.streak = updateStreak(await getStreak(), s.date);
   await saveStreak(app.streak);
   const newBest = isBetterRound(round, s.best);
