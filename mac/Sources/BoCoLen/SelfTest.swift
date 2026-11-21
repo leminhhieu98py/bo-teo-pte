@@ -9,6 +9,7 @@ enum SelfTest {
     ("popup", "popup/popup.html", NSSize(width: 340, height: 520)),
     ("review", "review/review.html", NSSize(width: 1100, height: 780)),
     ("history", "history/history.html", NSSize(width: 820, height: 900)),
+    ("achievements", "achievements/achievements.html", NSSize(width: 1000, height: 1400)),
     ("options", "options/options.html", NSSize(width: 720, height: 1500)),
     ("toast", "native/toast.html", NSSize(width: 420, height: 150)),
     ("worker", "native/worker.html", NSSize(width: 200, height: 100)),
@@ -46,6 +47,11 @@ enum SelfTest {
     if let i = args.firstIndex(of: "--selftest-learner"), i + 1 < args.count {
       installTestHandler()
       learnerScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
+      return true
+    }
+    if let i = args.firstIndex(of: "--selftest-achievements"), i + 1 < args.count {
+      installTestHandler()
+      achievementsScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
       return true
     }
     if let i = args.firstIndex(of: "--selftest-nav"), i + 1 < args.count {
@@ -143,6 +149,66 @@ enum SelfTest {
             }
             print("SELFTEST LEARNER DONE")
             exit(0)
+          }
+        }
+      }
+    }
+  }
+
+  // MARK: achievements scenario (mocked stats: several tiers to claim, popups one after another)
+
+  private static func achievementsScenario(_ out: URL) {
+    try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+    seedPractice()
+    Web.shared.extraScripts = [WKUserScript(source: mockNetwork, injectionTime: .atDocumentStart, forMainFrameOnly: true)]
+    let id = Web.shared.open(WebRoot.url("achievements/achievements.html"))
+    guard let view = Web.shared.views[id] else {
+      print("ACH no web view")
+      exit(1)
+    }
+    let probe = """
+      const popup = document.querySelector('.unlock-card');
+      return JSON.stringify({
+        popup: popup ? popup.querySelector('h2').textContent + ' ' + popup.querySelector('.unlock-reward').textContent : null,
+        medals: document.getElementById('medalCount').textContent,
+        total: document.getElementById('medalTotal').textContent,
+        wallet: document.getElementById('wallet').textContent,
+        cards: document.querySelectorAll('.ach').length,
+        claims: window.__claims || [],
+        rail: [...document.querySelectorAll('.nav-rail .nav-btn')].map((b) => b.getAttribute('aria-label') + (b.classList.contains('active') ? '*' : '')).join(','),
+      });
+      """
+    func step(_ label: String, before: String = "", then next: @escaping () -> Void) {
+      view.callAsyncJavaScript("\(before)\n\(probe)", arguments: [:], in: nil, in: .page) { result in
+        switch result {
+        case .success(let value): print("ACH \(label): \(value as? String ?? "?")")
+        case .failure(let error): print("ACH \(label): error \(error)")
+        }
+        next()
+      }
+    }
+    func snapshot(_ name: String, then next: @escaping () -> Void) {
+      view.takeSnapshot(with: nil) { image, _ in
+        if let tiff = image?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+           let png = rep.representation(using: .png, properties: [:]) {
+          try? png.write(to: out.appendingPathComponent(name))
+        }
+        next()
+      }
+    }
+    let close = "document.querySelector('.unlock-card button')?.click(); await new Promise((r) => setTimeout(r, 400));"
+    DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+      step("first popup") {
+        snapshot("ach-popup.png") {
+          step("second popup", before: close) {
+            step("third popup", before: close) {
+              step("after popups", before: close + close) {
+                snapshot("ach-page.png") {
+                  print("SELFTEST ACH DONE")
+                  exit(0)
+                }
+              }
+            }
           }
         }
       }
@@ -252,6 +318,16 @@ enum SelfTest {
             return json({ ok: true, credited, xp: window.__xp, earnedToday: window.__earned });
           }
           if (body.action === 'wallet-spend') { window.__xp -= body.amount; return json({ ok: true, xp: window.__xp }); }
+          if (body.action === 'stats') {
+            return json({ ok: true, xp: window.__xp, claimed: [{ id: 'hard-working', tier: 0, unlocked_at: '2026-11-20T10:00:00Z' }],
+              stats: { streak_best: 8, rounds_no_hint: 6, flawless_best: 1, owned: 0, words: 12, great_words: 3, full_days: 1, earned_total: 1200 } });
+          }
+          if (body.action === 'achievement-claim') {
+            const reward = [50, 100, 200, 400, 800][body.tier];
+            window.__xp += reward;
+            window.__claims = (window.__claims || []).concat(`${body.achievementId}:${body.tier}`);
+            return json({ ok: true, reward, xp: window.__xp });
+          }
           return json({ ok: true, updated: 1, day: {} });
         }
         if (u.includes('generativelanguage')) return json({ candidates: [{ content: { parts: [{ text: '{"heard":"x","score":10}' }] } }] });
