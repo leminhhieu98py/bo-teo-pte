@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { listWords, addWord, postReview, saveHistory, listHistory, listUsers, createUser, renameUser, SheetError } from '../lib/sheet.js';
+import { listWords, addWord, postReview, saveHistory, listHistory, listUsers, createUser, renameUser, walletGet, walletEarn, walletSpend, SheetError } from '../lib/sheet.js';
 
 function fakeFetch(body, status = 200) {
   const calls = [];
@@ -83,4 +83,22 @@ test('learner actions', async () => {
   await renameUser({ url, token: 't', id: 'bo_1', name: 'Bo Bo', fetchImpl });
   assert.deepEqual(fetchImpl.calls.map((c) => c.payload.action), ['users-list', 'users-create', 'users-rename']);
   assert.deepEqual(fetchImpl.calls[2].payload, { token: 't', action: 'users-rename', id: 'bo_1', name: 'Bo Bo' });
+});
+
+test('wallet calls', async () => {
+  const fetchImpl = fakeFetch({ ok: true, xp: 2050, earnedToday: 50, credited: 50, owned: [], pet: '', theme: '' });
+  assert.deepEqual(await walletGet({ url, token: 't', userId: 'bo_1', date: '2026-11-21', fetchImpl }),
+    { xp: 2050, earnedToday: 50, owned: [], pet: '', theme: '' });
+  assert.deepEqual(await walletEarn({ url, token: 't', userId: 'bo_1', txId: 'k:w:earn', date: '2026-11-21', amount: 50, ref: 'w', fetchImpl }),
+    { credited: 50, xp: 2050, earnedToday: 50 });
+  assert.deepEqual(fetchImpl.calls[1].payload, { token: 't', action: 'wallet-earn', userId: 'bo_1', txId: 'k:w:earn', date: '2026-11-21', amount: 50, ref: 'w' });
+  await walletSpend({ url, token: 't', userId: 'bo_1', txId: 'k:w:hint1', date: '2026-11-21', amount: 5, kind: 'hint', ref: 'w', fetchImpl });
+  assert.deepEqual(fetchImpl.calls.map((c) => c.payload.action), ['wallet-get', 'wallet-earn', 'wallet-spend']);
+});
+
+test('walletSpend reports a short wallet without throwing', async () => {
+  const short = fakeFetch({ ok: false, error: 'not_enough_xp', xp: 3 });
+  assert.deepEqual(await walletSpend({ url, token: 't', userId: 'bo_1', txId: 'x', date: '2026-11-21', amount: 5, kind: 'hint', fetchImpl: short }),
+    { ok: false, error: 'not_enough_xp', xp: 3 });
+  await assert.rejects(walletSpend({ url, token: 't', userId: 'bo_1', txId: 'x', date: '2026-11-21', amount: 5, kind: 'hint', fetchImpl: fakeFetch({ ok: false, error: 'Wrong token' }) }), SheetError);
 });

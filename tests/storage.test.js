@@ -10,7 +10,7 @@ globalThis.chrome = {
   runtime: { getURL: (p) => `test://${p}` },
 };
 globalThis.fetch = async () => ({ ok: false, json: async () => ({}) });
-const { getSettings, saveSettings, missingSettings } = await import('../lib/storage.js');
+const { getSettings, saveSettings, missingSettings, getWallet, saveWallet } = await import('../lib/storage.js');
 
 beforeEach(() => { for (const k of Object.keys(data)) delete data[k]; });
 
@@ -36,4 +36,15 @@ test('switching learner clears the local session and streak, renaming does not',
   await saveSettings({ userId: 'an_87654321', userName: 'An' });
   assert.equal(data.session, null);
   assert.deepEqual(data.streak, { count: 0, lastDate: '' });
+});
+
+test('the wallet cache belongs to one learner', async () => {
+  await saveSettings({ userId: 'bo_12345678', userName: 'Bo' });
+  assert.equal(await getWallet(), null);
+  await saveWallet({ userId: 'bo_12345678', xp: 2000, earnedToday: 0, date: '2026-11-21', owned: [], pet: '', theme: '' });
+  assert.equal((await getWallet()).xp, 2000);
+  await saveSettings({ userName: 'Bo Bo' });
+  assert.equal((await getWallet()).xp, 2000);
+  await saveSettings({ userId: 'an_12345678', userName: 'An' });
+  assert.equal(await getWallet(), null);
 });
