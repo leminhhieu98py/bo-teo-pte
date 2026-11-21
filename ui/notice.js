@@ -27,10 +27,12 @@ export function showConfirm({ title, text, mood = 'think', yes = 'Yes', no = 'No
       e.stopPropagation();
       if (e.key === 'Escape') finish(false);
     };
+    // The second click of a double-click lands on the backdrop: ignore it instead of answering no.
+    const opened = Date.now();
     overlay.addEventListener('click', (e) => {
       const answer = e.target.closest('[data-answer]')?.dataset.answer;
-      if (answer) finish(answer === 'yes');
-      else if (e.target === overlay) finish(false);
+      if (answer && Date.now() - opened > 250) finish(answer === 'yes');
+      else if (e.target === overlay && Date.now() - opened > 400) finish(false);
     });
     document.addEventListener('keydown', onKey, true);
     document.body.append(overlay);

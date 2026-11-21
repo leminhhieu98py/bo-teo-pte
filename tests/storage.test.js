@@ -48,3 +48,12 @@ test('the wallet cache belongs to one learner', async () => {
   await saveSettings({ userId: 'an_12345678', userName: 'An' });
   assert.equal(await getWallet(), null);
 });
+
+test('patchWallet changes only the given fields of the same learner', async () => {
+  const { patchWallet } = await import('../lib/storage.js');
+  await saveWallet({ userId: 'bo_12345678', xp: 2000, earnedToday: 0, date: '2026-11-21', owned: ['night'], pet: '', theme: 'night' });
+  await patchWallet('bo_12345678', { xp: 2050, earnedToday: 50 });
+  assert.deepEqual(await getWallet(), { userId: 'bo_12345678', xp: 2050, earnedToday: 50, date: '2026-11-21', owned: ['night'], pet: '', theme: 'night' });
+  await patchWallet('an_12345678', { xp: 10 });
+  assert.deepEqual(await getWallet(), { userId: 'an_12345678', xp: 10 });
+});

@@ -4,7 +4,7 @@ import { mountNav } from '../ui/nav.js';
 import { medalSvg } from '../ui/medals.js';
 import { checkAchievements, celebrate } from '../ui/achievements-check.js';
 import { ACHIEVEMENTS, TIERS, progress, goalText } from '../lib/achievements.js';
-import { getSettings, missingSettings, getWallet, saveWallet } from '../lib/storage.js';
+import { getSettings, missingSettings, getWallet, patchWallet } from '../lib/storage.js';
 import { formatMoney } from '../lib/xp.js';
 
 const $ = (id) => document.getElementById(id);
@@ -97,8 +97,7 @@ async function init() {
   // Rewards are added to the cached wallet (which also counts writes still waiting to be sent).
   const rewards = result.won.reduce((sum, w) => sum + w.reward, 0);
   if (mine) {
-    const wallet = { ...mine, xp: mine.xp + rewards };
-    await saveWallet(wallet);
+    const wallet = await patchWallet(settings.userId, { xp: mine.xp + rewards });
     $('wallet').textContent = formatMoney(wallet.xp);
   } else if (result.xp !== null) {
     $('wallet').textContent = formatMoney(result.xp);

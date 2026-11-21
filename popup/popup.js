@@ -1,6 +1,6 @@
 import { setMood } from '../ui/mascot.js';
 import { syncTheme } from '../ui/theme-sync.js';
-import { getSession, getStreak, getSettings, getWallet, saveWallet, outbox } from '../lib/storage.js';
+import { getSession, getStreak, getSettings, getWallet, patchWallet, outbox } from '../lib/storage.js';
 import { walletGet } from '../lib/sheet.js';
 import { DAY_CAP, formatMoney, withPending } from '../lib/xp.js';
 import { todayKey } from '../lib/daily.js';
@@ -69,7 +69,8 @@ async function refreshWallet() {
   try {
     const server = await walletGet({ url: settings.sheetUrl, token: settings.token, userId: settings.userId, date: today });
     const pending = (await outbox.all()).filter((i) => i.payload?.userId === settings.userId);
-    await saveWallet(withPending({ userId: settings.userId, date: today, ...server }, pending, today));
+    const { xp, earnedToday, owned, pet, theme } = withPending({ date: today, ...server }, pending, today);
+    await patchWallet(settings.userId, { xp, earnedToday, date: today, owned, pet, theme });
     await render();
   } catch {
     // Offline: the cached numbers stay.

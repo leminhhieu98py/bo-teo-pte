@@ -3,7 +3,7 @@ import { setMood } from '../ui/mascot.js';
 import { ICONS, starSvg } from '../ui/icons.js';
 import {
   getSettings, getReadySettings, missingSettings, SetupError, getSession, saveSession,
-  getStreak, saveStreak, getPrefs, savePrefs, appendErrorLog, outbox, migrateLegacyQueues, getWallet, saveWallet,
+  getStreak, saveStreak, getPrefs, savePrefs, appendErrorLog, outbox, migrateLegacyQueues, getWallet, patchWallet,
 } from '../lib/storage.js';
 import { listWords, postReview, saveHistory, listHistory, walletGet, walletEarn, walletSpend } from '../lib/sheet.js';
 import { DAY_CAP, wordShare, nextHintCost, payHint, settleEarn, formatMoney, withPending } from '../lib/xp.js';
@@ -165,9 +165,11 @@ async function sendItem(item) {
 // date#round, plus the round's random nonce so ids never repeat (learner switch, cleared storage).
 const roundKey = (s) => `${s.date}#${s.round || 1}${s.nonce ? `#${s.nonce}` : ''}`;
 
-async function setWallet(wallet) {
+// Practice only owns the money fields of the cache (the Shop owns pet/theme/owned), unless `fields`
+// says otherwise (a fresh answer from the Sheet updates everything).
+async function setWallet(wallet, fields = ['xp', 'earnedToday', 'date']) {
   app.wallet = wallet;
-  if (wallet) await saveWallet(wallet);
+  if (wallet) await patchWallet(app.settings.userId, Object.fromEntries(fields.map((f) => [f, wallet[f]])));
   updateTopbar();
 }
 
@@ -186,7 +188,7 @@ async function refreshWallet() {
   try {
     const server = await walletGet({ url: app.settings.sheetUrl, token: app.settings.token, userId: app.settings.userId, date: today });
     const pending = (await outbox.all()).filter((i) => i.payload?.userId === app.settings.userId);
-    await setWallet(withPending({ userId: app.settings.userId, date: today, ...server }, pending, today));
+    await setWallet(withPending({ userId: app.settings.userId, date: today, ...server }, pending, today), ['xp', 'earnedToday', 'date', 'owned', 'pet', 'theme']);
   } catch (err) {
     logError(err, 'wallet'); // offline: keep the cached wallet
   }

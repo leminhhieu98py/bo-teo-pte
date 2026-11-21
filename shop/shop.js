@@ -6,13 +6,14 @@ import { applyTheme } from '../ui/theme-sync.js';
 import { showConfirm, showNotice } from '../ui/notice.js';
 import { checkAchievements, celebrate } from '../ui/achievements-check.js';
 import { PETS, THEMES, isOwned } from '../lib/shop.js';
-import { getSettings, missingSettings, getWallet, saveWallet, outbox } from '../lib/storage.js';
+import { getSettings, missingSettings, getWallet, patchWallet, outbox } from '../lib/storage.js';
 import { walletGet, shopBuy, shopEquip } from '../lib/sheet.js';
 import { formatMoney, withPending } from '../lib/xp.js';
 import { todayKey } from '../lib/daily.js';
 
 const $ = (id) => document.getElementById(id);
-const state = { settings: null, wallet: null, tab: 'pets', busy: false };
+const state = { settings: null, wallet: null, tab: 'pets', busy: false, buying: '' };
+const ALL = ['xp', 'earnedToday', 'date', 'owned', 'pet', 'theme'];
 
 function el(tag, cls, text) {
   const node = document.createElement(tag);
@@ -23,10 +24,18 @@ function el(tag, cls, text) {
 
 const using = (item, kind) => (kind === 'pet' ? (state.wallet?.pet || 'mochi') : (state.wallet?.theme || 'lavender')) === item.id;
 
-async function setWallet(wallet) {
+// Writes only `fields` to the shared cache, so this page never puts back an older value of another page.
+async function setWallet(wallet, fields) {
   state.wallet = wallet;
-  await saveWallet(wallet);
+  await patchWallet(state.settings.userId, Object.fromEntries(fields.map((f) => [f, wallet[f]])));
   $('wallet').textContent = formatMoney(wallet.xp);
+}
+
+// The Sheet's numbers plus the writes still waiting in the outbox.
+async function fromServer(server) {
+  const today = todayKey();
+  const pending = (await outbox.all()).filter((i) => i.payload?.userId === state.settings.userId);
+  return withPending({ userId: state.settings.userId, date: today, earnedToday: state.wallet?.earnedToday || 0, ...server }, pending, today);
 }
 
 async function loadWallet() {
@@ -36,11 +45,9 @@ async function loadWallet() {
     $('wallet').textContent = formatMoney(cached.xp);
   }
   render();
-  const today = todayKey();
   try {
-    const server = await walletGet({ url: state.settings.sheetUrl, token: state.settings.token, userId: state.settings.userId, date: today });
-    const pending = (await outbox.all()).filter((i) => i.payload?.userId === state.settings.userId);
-    await setWallet(withPending({ userId: state.settings.userId, date: today, ...server }, pending, today));
+    const server = await walletGet({ url: state.settings.sheetUrl, token: state.settings.token, userId: state.settings.userId, date: todayKey() });
+    await setWallet(await fromServer(server), ALL);
     $('status').textContent = '';
   } catch {
     if (!state.wallet) $('status').textContent = 'Could not open your wallet. Check the internet and try again.';
@@ -78,7 +85,11 @@ function card(item, kind) {
   const owned = isOwned(item.id, state.wallet?.owned);
   if (using(item, kind)) box.append(el('span', 'tag', 'In use'));
   const btn = el('button', 'btn');
-  if (!state.wallet) {
+  if (state.buying === item.id) {
+    btn.className = 'btn btn-primary';
+    btn.textContent = 'Buying...';
+    btn.disabled = true;
+  } else if (!state.wallet) {
     btn.className = 'btn btn-ghost';
     btn.textContent = '...';
     btn.disabled = true;
@@ -88,6 +99,7 @@ function card(item, kind) {
   } else if (owned) {
     btn.className = 'btn btn-ghost';
     btn.textContent = 'Use';
+    btn.disabled = state.busy;
     btn.addEventListener('click', () => equip(item, kind));
   } else {
     btn.className = 'btn btn-primary';
@@ -98,6 +110,7 @@ function card(item, kind) {
       box.append(btn, el('span', 'need', `Need ${formatMoney(short)} more`));
       return box;
     }
+    btn.disabled = state.busy;
     btn.addEventListener('click', () => buy(item, kind));
   }
   box.append(btn);
@@ -118,7 +131,7 @@ async function equip(item, kind) {
   state.busy = true;
   try {
     const out = await shopEquip({ url: state.settings.sheetUrl, token: state.settings.token, userId: state.settings.userId, kind, itemId: item.id });
-    await setWallet({ ...state.wallet, pet: out.pet, theme: out.theme });
+    await setWallet({ ...state.wallet, pet: out.pet, theme: out.theme }, ['pet', 'theme']);
     if (kind === 'theme') applyTheme(out.theme);
     else setPet(out.pet || 'mochi');
     setMood($('mascot'), 'happy');
@@ -140,21 +153,33 @@ async function buy(item, kind) {
     no: 'Not now',
     preview: kind === 'pet' ? `<div class="mascot" data-fixed-pet="${item.id}">${petSvg(item.id, 'wow')}</div>` : themePreview(item).outerHTML,
   });
-  if (!yes) return;
+  if (!yes || state.busy) return;
   state.busy = true;
+  state.buying = item.id;
+  render();
   let bought = false;
+  const base = { url: state.settings.sheetUrl, token: state.settings.token, userId: state.settings.userId };
   try {
-    const out = await shopBuy({ url: state.settings.sheetUrl, token: state.settings.token, userId: state.settings.userId, itemId: item.id, date: todayKey() });
-    await setWallet({ ...state.wallet, xp: out.xp, owned: out.owned });
-    if (out.ok) bought = true;
-    else if (out.error === 'not_enough_xp') {
+    const out = await shopBuy({ ...base, itemId: item.id, date: todayKey() });
+    await setWallet(await fromServer({ ...state.wallet, xp: out.xp, owned: out.owned }), ['xp', 'owned']);
+    // already_owned: a lost answer to an earlier tap that did buy it.
+    bought = out.ok || out.error === 'already_owned';
+    if (out.error === 'not_enough_xp') {
       await showNotice({ title: 'Not enough money yet', text: `You need ${formatMoney(item.price)}. Practice more to earn money, or ask the admin.`, mood: 'sad', button: 'OK' });
     }
-    // already_owned: the wallet above now shows it as owned.
   } catch (err) {
-    $('status').textContent = `Could not buy: ${err.message}`;
+    // The answer was lost (slow internet): the Sheet may have sold it anyway. Ask again before saying no.
+    try {
+      const server = await walletGet({ ...base, date: todayKey() });
+      await setWallet(await fromServer(server), ALL);
+      bought = isOwned(item.id, server.owned);
+    } catch {
+      // still offline
+    }
+    if (!bought) $('status').textContent = `Could not buy: ${err.message}`;
   } finally {
     state.busy = false;
+    state.buying = '';
     render();
   }
   if (!bought) return;
@@ -162,7 +187,8 @@ async function buy(item, kind) {
   await equip(item, kind); // a new pet or theme is used right away
   // Fashion achievements count pets and themes.
   const result = await checkAchievements(state.settings);
-  if (result.won.length) await setWallet({ ...state.wallet, xp: state.wallet.xp + result.won.reduce((s, w) => s + w.reward, 0) });
+  const rewards = result.won.reduce((sum, w) => sum + w.reward, 0);
+  if (rewards) await setWallet({ ...state.wallet, xp: state.wallet.xp + rewards }, ['xp']);
   await celebrate(state.settings, result.toCelebrate);
 }
 
@@ -177,6 +203,11 @@ async function init() {
   await loadWallet();
 }
 
+// Another learner chosen in Settings: this page must not keep buying for the previous one.
+chrome.storage.onChanged?.addListener((changes, area) => {
+  if (area === 'local' && changes.settings && state.settings
+    && (changes.settings.newValue?.userId || '') !== state.settings.userId) location.reload();
+});
 $('tabPets').addEventListener('click', () => { state.tab = 'pets'; render(); });
 $('tabThemes').addEventListener('click', () => { state.tab = 'themes'; render(); });
 init();
