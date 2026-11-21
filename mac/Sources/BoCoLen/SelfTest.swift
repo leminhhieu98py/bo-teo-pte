@@ -55,6 +55,11 @@ enum SelfTest {
       themesScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
       return true
     }
+    if let i = args.firstIndex(of: "--selftest-oldscript"), i + 1 < args.count {
+      installTestHandler()
+      oldScriptScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true), 0)
+      return true
+    }
     if let i = args.firstIndex(of: "--selftest-shop"), i + 1 < args.count {
       installTestHandler()
       shopScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
@@ -257,6 +262,41 @@ enum SelfTest {
     }
     html += "</body></html>"
     try? html.write(to: out.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
+  }
+
+  // MARK: old Code.gs scenario: every page explains "$—" instead of waiting forever
+
+  private static func oldScriptScenario(_ out: URL, _ index: Int) {
+    let pages = [("practice", "review/review.html"), ("popup", "popup/popup.html"), ("achievements", "achievements/achievements.html"),
+                 ("shop", "shop/shop.html"), ("settings", "options/options.html")]
+    guard index < pages.count else {
+      print("SELFTEST OLDSCRIPT DONE")
+      exit(0)
+    }
+    seedPractice()
+    let (name, path) = pages[index]
+    let (_, view) = Web.shared.makeWebView()
+    view.configuration.userContentController.addUserScript(WKUserScript(source: "window.__oldScript = true;\n" + mockNetwork, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    let window = NSWindow(contentRect: NSRect(x: -4000, y: 0, width: 1100, height: 800), styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = view
+    window.orderFrontRegardless()
+    windows.append(window)
+    view.load(URLRequest(url: WebRoot.url(path)))
+    DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
+      let probe = """
+        (() => {
+          const w = document.getElementById('xpPill') || document.getElementById('wallet') || document.getElementById('learnerWallet');
+          const msg = [document.getElementById('status'), document.getElementById('toastLine'), document.getElementById('learnerWallet')]
+            .map((e) => e && e.textContent).filter(Boolean).join(' | ');
+          return JSON.stringify({ wallet: w && w.textContent, tip: w && (w.title || w.parentElement.title), message: msg.slice(0, 140) });
+        })()
+        """
+      view.evaluateJavaScript(probe) { value, _ in
+        print("OLDSCRIPT \(name): \(value as? String ?? "?")")
+        window.orderOut(nil)
+        oldScriptScenario(out, index + 1)
+      }
+    }
   }
 
   // MARK: shop scenario (buy a pet, it is used at once, a theme too expensive, switch back for free)
@@ -480,7 +520,12 @@ enum SelfTest {
         if (u.includes('script.google.com')) {
           const body = JSON.parse(init.body);
           window.__sheetCalls.push(body.action);
+          // An Apps Script deployed before the wallet: newer actions are unknown.
+          if (window.__oldScript && ['wallet-get', 'wallet-earn', 'wallet-spend', 'stats', 'achievement-claim', 'shop-buy', 'shop-equip'].includes(body.action)) {
+            return json({ ok: false, error: 'Unknown action' });
+          }
           if (body.action === 'list') return json({ ok: true, words });
+          if (body.action === 'users-list') return json({ ok: true, users: [{ id: 'bo_k3x9q2mf', name: 'Bo' }] });
           if (body.action === 'history-list') {
             const day = (d, xp, rounds = 1) => ({ date: `2026-11-${String(d).padStart(2, '0')}`, rounds, xp_earned: xp, best_passed: 3, total: 3, best_avg_score: 88, again_words: '' });
             return json({ ok: true, days: window.__historyDays ? [3, 4, 5, 8, 12, 13, 14, 15, 17, 19, 20].map((d, i) => day(d, [20, 60, 120, 200, 35, 80, 150, 200, 200, 10, 90][i])) : [] });
