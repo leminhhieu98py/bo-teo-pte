@@ -19,8 +19,8 @@ export async function checkAchievements(settings, { onReward } = {}) {
   let data;
   try {
     data = await getStats(base);
-  } catch {
-    return { stats: null, claimed: null, won: [], toCelebrate: [], xp: null };
+  } catch (err) {
+    return { stats: null, claimed: null, won: [], toCelebrate: [], xp: null, error: err };
   }
   const claimed = [...data.claimed];
   const won = [];

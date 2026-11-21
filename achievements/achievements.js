@@ -77,6 +77,7 @@ async function init() {
   setMood($('mascot'), 'think');
   const settings = await getSettings();
   if (missingSettings(settings).length) {
+    $('wallet').textContent = '$—';
     $('loading').hidden = true;
     $('status').textContent = 'Settings are missing. Open Settings first.';
     return;
@@ -90,7 +91,8 @@ async function init() {
   $('list').setAttribute('aria-busy', 'false');
   if (!result.stats) {
     $('loading').hidden = true;
-    $('status').textContent = 'Could not load your achievements. Check the internet and try again.';
+    $('status').textContent = result.error?.code === 'old_script' ? result.error.message : 'Could not load your achievements. Check the internet and try again.';
+    if (!mine) $('wallet').textContent = '$—';
     render({}, []);
     return;
   }

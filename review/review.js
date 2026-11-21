@@ -44,6 +44,7 @@ const app = {
   session: null,
   streak: { count: 0, lastDate: '' },
   wallet: null, // { userId, date, xp, earnedToday, owned, pet, theme } - the Sheet is the truth
+  walletError: '', // why the wallet could not be read (shown as "$—" with a tooltip)
   pendingAdjust: [], // earn answers that arrived before the session was loaded
   unlockQueue: [], // achievement popups wait for the summary screen
   celebrating: false,
@@ -117,7 +118,9 @@ function updateTopbar() {
   $('trackFill').style.width = `${pct}%`;
   $('trackRunner').style.left = `${pct}%`;
   $('counter').textContent = `${done} / ${total}`;
-  $('xpPill').textContent = app.wallet ? formatMoney(app.wallet.xp) : '$...';
+  // "$..." while loading, "$—" when the Sheet could not give the wallet (the tooltip says why).
+  $('xpPill').textContent = app.wallet ? formatMoney(app.wallet.xp) : app.walletError ? '$—' : '$...';
+  $('xpPill').title = app.walletError && !app.wallet ? app.walletError : 'Your wallet';
   const days = currentStreak(app.streak, todayKey());
   $('streakPill').textContent = `${days} day${days === 1 ? '' : 's'}`;
 }
@@ -191,6 +194,9 @@ async function refreshWallet() {
     await setWallet(withPending({ userId: app.settings.userId, date: today, ...server }, pending, today), ['xp', 'earnedToday', 'date', 'owned', 'pet', 'theme']);
   } catch (err) {
     logError(err, 'wallet'); // offline: keep the cached wallet
+    app.walletError = err.code === 'old_script' ? err.message : 'Could not open your wallet. Check the internet.';
+    updateTopbar();
+    if (err.code === 'old_script') toastLine(err.message, 'bad');
   }
 }
 

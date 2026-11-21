@@ -122,3 +122,8 @@ test('shop calls: a refused purchase is an answer, not an error', async () => {
   const eq = fakeFetch({ ok: true, pet: 'fox-girl', theme: 'night' });
   assert.deepEqual(await shopEquip({ url, token: 't', userId: 'bo_1', kind: 'pet', itemId: 'fox-girl', fetchImpl: eq }), { pet: 'fox-girl', theme: 'night' });
 });
+
+test('an out-of-date Apps Script is reported clearly', async () => {
+  await assert.rejects(walletGet({ url, token: 't', userId: 'bo_1', date: '2026-11-21', fetchImpl: fakeFetch({ ok: false, error: 'Unknown action' }) }),
+    (e) => e instanceof SheetError && e.code === 'old_script' && /Code\.gs/.test(e.message) && /new version/.test(e.message));
+});

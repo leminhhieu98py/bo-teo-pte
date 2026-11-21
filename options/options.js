@@ -66,8 +66,9 @@ async function showWallet(id) {
   try {
     const wallet = await walletGet({ url: settings.sheetUrl, token: settings.token, userId: id, date: todayKey() });
     if ($('learnerSelect').value === id || settings.userId === id) $('learnerWallet').textContent = `Wallet: ${formatMoney(wallet.xp)}`;
-  } catch {
-    // Not created yet or offline: nothing to show.
+  } catch (err) {
+    // Not created yet or offline: nothing to show. An old Code.gs: tell the owner what to do.
+    if (err.code === 'old_script') $('learnerWallet').textContent = `Wallet: ${err.message}`;
   }
 }
 

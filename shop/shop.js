@@ -49,8 +49,11 @@ async function loadWallet() {
     const server = await walletGet({ url: state.settings.sheetUrl, token: state.settings.token, userId: state.settings.userId, date: todayKey() });
     await setWallet(await fromServer(server), ALL);
     $('status').textContent = '';
-  } catch {
-    if (!state.wallet) $('status').textContent = 'Could not open your wallet. Check the internet and try again.';
+  } catch (err) {
+    if (!state.wallet) {
+      $('wallet').textContent = '$—';
+      $('status').textContent = err.code === 'old_script' ? err.message : 'Could not open your wallet. Check the internet and try again.';
+    }
   }
   render();
 }
@@ -197,6 +200,7 @@ async function init() {
   setMood($('mascot'), 'happy');
   state.settings = await getSettings();
   if (missingSettings(state.settings).length) {
+    $('wallet').textContent = '$—';
     $('status').textContent = 'Settings are missing. Open Settings first.';
     return;
   }

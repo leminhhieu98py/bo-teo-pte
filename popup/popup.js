@@ -72,8 +72,13 @@ async function refreshWallet() {
     const { xp, earnedToday, owned, pet, theme } = withPending({ date: today, ...server }, pending, today);
     await patchWallet(settings.userId, { xp, earnedToday, date: today, owned, pet, theme });
     await render();
-  } catch {
-    // Offline: the cached numbers stay.
+  } catch (err) {
+    // Offline: the cached numbers stay. An old Code.gs: say so instead of "$...".
+    if (!(await getWallet())) {
+      $('wallet').textContent = '$—';
+      $('wallet').parentElement.title = err.message;
+      if (err.code === 'old_script') $('wallet').nextElementSibling.textContent = 'needs new Code.gs';
+    }
   }
 }
 
