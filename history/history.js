@@ -78,12 +78,26 @@ function moveMonth(step) {
   renderMonth();
 }
 
+// The Sheet can take a second or two: cover the calendar and show it is loading.
+function setLoading(on) {
+  $('loading').hidden = !on;
+  if (on) {
+    ['totDays', 'totPassed', 'totXp'].forEach((id) => { $(id).textContent = '…'; });
+    $('subtitle').textContent = 'Loading...';
+    setMood($('mascot'), 'think');
+  } else {
+    $('subtitle').textContent = 'Every day you study turns a box colorful.';
+  }
+}
+
 async function init() {
   setMood($('mascot'), 'think');
   renderMonth();
   renderDetail();
+  setLoading(true);
   const settings = await getSettings();
   if (missingSettings(settings).length) {
+    setLoading(false);
     $('status').textContent = 'Settings are missing. Open Settings first.';
     return;
   }
@@ -95,6 +109,8 @@ async function init() {
     const entry = errorEntry(err, { where: 'history' });
     appendErrorLog(entry);
     $('status').textContent = `Could not load history. ${formatDetail(entry)}`;
+  } finally {
+    setLoading(false);
   }
   renderMonth();
   renderDetail();
