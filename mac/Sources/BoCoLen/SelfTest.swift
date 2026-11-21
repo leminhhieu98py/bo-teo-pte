@@ -49,6 +49,11 @@ enum SelfTest {
       learnerScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
       return true
     }
+    if let i = args.firstIndex(of: "--selftest-themes"), i + 1 < args.count {
+      installTestHandler()
+      themesScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
+      return true
+    }
     if let i = args.firstIndex(of: "--selftest-achievements"), i + 1 < args.count {
       installTestHandler()
       achievementsScenario(URL(fileURLWithPath: args[i + 1], isDirectory: true))
@@ -153,6 +158,98 @@ enum SelfTest {
         }
       }
     }
+  }
+
+  // MARK: themes scenario: the real pages in every theme, as pictures for the owner's review
+
+  private static let themeIds = ["lavender", "peach", "mint", "ocean", "strawberry", "night"]
+  private static let themePages = [
+    ("practice", "review/review.html", NSSize(width: 1180, height: 820)),
+    ("history", "history/history.html", NSSize(width: 1180, height: 820)),
+    ("achievements", "achievements/achievements.html", NSSize(width: 1180, height: 820)),
+    ("settings", "options/options.html", NSSize(width: 1180, height: 820)),
+    ("popup", "popup/popup.html", NSSize(width: 340, height: 560)),
+  ]
+
+  private static func themesScenario(_ out: URL) {
+    try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+    let today: String = {
+      let f = DateFormatter()
+      f.dateFormat = "yyyy-MM-dd"
+      return f.string(from: Date())
+    }()
+    var shots: [(String, String)] = []
+    func shoot(_ t: Int, _ p: Int) {
+      guard t < themeIds.count else {
+        writeGallery(out, shots)
+        print("SELFTEST THEMES DONE \(shots.count) pictures")
+        exit(0)
+      }
+      guard p < themePages.count else { return shoot(t + 1, 0) }
+      let theme = themeIds[t]
+      let (name, path, size) = themePages[p]
+      seedPractice()
+      Store.shared.set(["wallet": ["userId": "bo_k3x9q2mf", "xp": 2350, "earnedToday": 120, "date": today,
+                                   "owned": [theme], "pet": "", "theme": theme]])
+      let (_, view) = Web.shared.makeWebView()
+      let script = "window.__historyDays = true; window.__theme = '\(theme)';\n" + mockNetwork
+      view.configuration.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+      let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+      window.contentView = view
+      window.orderFrontRegardless()
+      windows.append(window)
+      view.load(URLRequest(url: WebRoot.url(path)))
+      DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
+        // Close any popup (achievement unlocks) so the page itself is visible.
+        view.evaluateJavaScript("document.querySelectorAll('.leave-overlay').forEach((o) => o.remove()); document.documentElement.getAttribute('data-theme') || 'lavender'") { value, _ in
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            view.takeSnapshot(with: nil) { image, _ in
+              let file = "\(theme)-\(name).png"
+              if let tiff = image?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+                 let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: out.appendingPathComponent(file))
+                shots.append((theme, file))
+              }
+              print("THEME \(theme) \(name): applied=\(value as? String ?? "?")")
+              window.orderOut(nil)
+              shoot(t, p + 1)
+            }
+          }
+        }
+      }
+    }
+    shoot(0, 0)
+  }
+
+  private static func writeGallery(_ out: URL, _ shots: [(String, String)]) {
+    let names = ["lavender": "Lavender (free)", "peach": "Peach Sunset", "mint": "Mint Garden",
+                 "ocean": "Ocean Pop", "strawberry": "Strawberry Milk", "night": "Night Sky"]
+    var html = """
+      <!doctype html><html lang="en"><head><meta charset="utf-8"><title>Bo co len - theme review</title>
+      <style>
+        body { margin: 0; padding: 24px; font: 15px/1.4 -apple-system, sans-serif; background: #f4f4f7; color: #222; }
+        h1 { margin: 0 0 4px; } p.lead { margin: 0 0 20px; color: #555; }
+        section { background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 22px; box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+        h2 { margin: 0 0 12px; }
+        .row { display: flex; gap: 12px; overflow-x: auto; align-items: flex-start; }
+        figure { margin: 0; flex: none; } figure img { height: 300px; border-radius: 8px; border: 1px solid #ddd; display: block; cursor: zoom-in; }
+        figcaption { font-size: 12px; color: #666; margin-top: 4px; }
+        nav a { margin-right: 12px; }
+      </style></head><body>
+      <h1>Theme review</h1>
+      <p class="lead">The real app pages in each theme (with example data). Click a picture to open it full size.</p>
+      <nav>\(themeIds.map { "<a href=\"#\($0)\">\(names[$0] ?? $0)</a>" }.joined())</nav><br>
+      """
+    for theme in themeIds {
+      html += "<section id=\"\(theme)\"><h2>\(names[theme] ?? theme)</h2><div class=\"row\">"
+      for (t, file) in shots where t == theme {
+        let page = file.replacingOccurrences(of: "\(theme)-", with: "").replacingOccurrences(of: ".png", with: "")
+        html += "<figure><a href=\"\(file)\" target=\"_blank\"><img src=\"\(file)\" alt=\"\(page)\"></a><figcaption>\(page)</figcaption></figure>"
+      }
+      html += "</div></section>"
+    }
+    html += "</body></html>"
+    try? html.write(to: out.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
   }
 
   // MARK: achievements scenario (mocked stats: several tiers to claim, popups one after another)
@@ -310,8 +407,11 @@ enum SelfTest {
           const body = JSON.parse(init.body);
           window.__sheetCalls.push(body.action);
           if (body.action === 'list') return json({ ok: true, words });
-          if (body.action === 'history-list') return json({ ok: true, days: [] });
-          if (body.action === 'wallet-get') return json({ ok: true, xp: window.__xp, earnedToday: window.__earned, owned: [], pet: '', theme: '' });
+          if (body.action === 'history-list') {
+            const day = (d, xp, rounds = 1) => ({ date: `2026-11-${String(d).padStart(2, '0')}`, rounds, xp_earned: xp, best_passed: 3, total: 3, best_avg_score: 88, again_words: '' });
+            return json({ ok: true, days: window.__historyDays ? [3, 4, 5, 8, 12, 13, 14, 15, 17, 19, 20].map((d, i) => day(d, [20, 60, 120, 200, 35, 80, 150, 200, 200, 10, 90][i])) : [] });
+          }
+          if (body.action === 'wallet-get') return json({ ok: true, xp: window.__xp, earnedToday: window.__earned, owned: [], pet: '', theme: window.__theme || '' });
           if (body.action === 'wallet-earn') {
             const credited = Math.min(body.amount, 200 - window.__earned);
             window.__xp += credited; window.__earned += credited;
